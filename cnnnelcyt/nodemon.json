@@ -1,0 +1,8 @@
+{
+  "watch": ["src"],
+  "ext": "ts",
+  "ignore": ["*.log", "*.js", "node_modules"],
+  "exec": "ts-node src/index.ts",
+  "signal": "SIGTERM",
+  "delay": "1000"
+}
