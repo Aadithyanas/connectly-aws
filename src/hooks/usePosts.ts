@@ -121,7 +121,7 @@ export function usePosts(filterUserId?: string, filterRole?: string) {
       const rawList = isLoadMore ? [...postsRef.current, ...formatted] : formatted;
       // Deduplicate by ID to prevent duplicate key errors
       const seenIds = new Set();
-      const newPostsList = rawList.filter(p => {
+      const newPostsList = rawList.filter((p: Post) => {
         if (seenIds.has(p.id)) return false;
         seenIds.add(p.id);
         return true;
