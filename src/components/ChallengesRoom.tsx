@@ -39,7 +39,7 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
           setLoading(false)
           setIsInitialLoading(false)
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [user])
 
@@ -71,7 +71,7 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    
+
     const handleAppRefresh = () => {
       fetchChallenges(1, true)
     }
@@ -95,11 +95,11 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
 
       const response = await fetch(url.toString())
       const data = await response.json()
-      
+
       const newChallenges = data.challenges || []
       setChallenges(prev => reset ? newChallenges : [...prev, ...newChallenges])
       setHasMore(data.hasMore)
-      
+
       // Save to cache
       if (user && reset && newChallenges.length > 0) {
         localStorage.setItem(`arena_challenges_${user.id}`, JSON.stringify(newChallenges))
@@ -183,7 +183,7 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
               Explore 2,900+ professional LeetCode problems. Master your skills and climb the leaderboard.
             </p>
             <form onSubmit={handleSearch} className="relative group w-full md:w-64">
-              <input 
+              <input
                 type="text"
                 placeholder="Search problems..."
                 value={searchQuery}
@@ -200,8 +200,8 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
                 key={diff}
                 onClick={() => setActiveDifficulty(diff)}
                 className={`px-4 py-1.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all border shrink-0
-                  ${activeDifficulty === diff 
-                    ? 'bg-amber-400 border-amber-400 text-black' 
+                  ${activeDifficulty === diff
+                    ? 'bg-amber-400 border-amber-400 text-black'
                     : 'bg-white/[0.03] border-white/[0.06] text-zinc-500 hover:border-white/20'}
                 `}
               >
@@ -214,8 +214,8 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
                 className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border whitespace-nowrap
-                  ${activeCategory === cat 
-                    ? 'bg-zinc-100 border-zinc-100 text-black' 
+                  ${activeCategory === cat
+                    ? 'bg-zinc-100 border-zinc-100 text-black'
                     : 'bg-white/[0.02] border-white/[0.05] text-zinc-500 hover:border-white/20'}
                 `}
               >
@@ -240,13 +240,13 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
         ) : (
           <>
             {challenges.map((challenge) => {
-              const isSolved = solutions.some(s => 
-                String(s) === String(challenge.id) || 
+              const isSolved = solutions.some(s =>
+                String(s) === String(challenge.id) ||
                 String(s) === String(challenge.leetcode_id)
               )
-              
+
               return (
-                <div 
+                <div
                   key={challenge.id}
                   onClick={() => setSelectedChallenge(challenge)}
                   className={`group relative p-4 md:p-5 bg-[#0a0a0a] border rounded-2xl transition-all duration-300 cursor-pointer overflow-hidden
@@ -281,7 +281,7 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
                       <p className="text-zinc-500 text-[11px] line-clamp-2 leading-relaxed mb-3">
                         {challenge.description}
                       </p>
-                      
+
                       <div className="flex flex-wrap gap-1.5">
                         {challenge.topics?.slice(0, 3).map((topic: string) => (
                           <span key={topic} className="px-2 py-0.5 bg-white/[0.03] text-zinc-500 text-[8px] md:text-[9px] font-bold uppercase tracking-wider rounded border border-white/[0.05]">
@@ -298,7 +298,7 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
                 </div>
               )
             })}
-            
+
             {hasMore && (
               <button
                 onClick={() => {
@@ -317,10 +317,10 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
       </div>
 
       {selectedChallenge && (
-        <CodingArena 
-          challenge={selectedChallenge} 
+        <CodingArena
+          challenge={selectedChallenge}
           isSolved={solutions.includes(selectedChallenge.id)}
-          onClose={() => setSelectedChallenge(null)} 
+          onClose={() => setSelectedChallenge(null)}
           onSuccess={async () => {
             if (!solutions.includes(selectedChallenge.id)) {
               setSolutions([...solutions, selectedChallenge.id])
@@ -330,13 +330,13 @@ export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps)
                   challenge_id: selectedChallenge.id,
                   points: selectedChallenge.difficulty === 'easy' ? 10 : selectedChallenge.difficulty === 'medium' ? 20 : 30
                 })
-                
+
                 // Refresh solutions list immediately
                 const solData = await api.get('/challenges/solutions')
                 if (Array.isArray(solData)) {
                   setSolutions(solData.map((s: any) => String(s.challenge_id)))
                 }
-                
+
                 // Notify other components (like InfoSidebar)
                 window.dispatchEvent(new CustomEvent('challenges:updated'))
               } catch (e) {

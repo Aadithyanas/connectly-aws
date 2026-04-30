@@ -50,7 +50,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com https://*.supabase.co https://res.cloudinary.com https://cdn.jsdelivr.net https://avatar.vercel.sh https://lh3.googleusercontent.com; media-src 'self' blob: https://res.cloudinary.com; connect-src 'self' https://api.cloudinary.com https://oauth2.googleapis.com https://accounts.google.com http://127.0.0.1:4002 ws://127.0.0.1:4002 http://localhost:4002 ws://localhost:4002; frame-ancestors 'none'; frame-src https://accounts.google.com;",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com https://*.supabase.co https://res.cloudinary.com https://cdn.jsdelivr.net https://avatar.vercel.sh https://lh3.googleusercontent.com; media-src 'self' blob: https://res.cloudinary.com; connect-src 'self' https://api.cloudinary.com https://oauth2.googleapis.com https://accounts.google.com http://127.0.0.1:4002 ws://127.0.0.1:4002 http://localhost:4002 ws://localhost:4002 http://13.61.104.24:4002 ws://13.61.104.24:4002; frame-ancestors 'none'; frame-src https://accounts.google.com;",
           },
         ],
       },

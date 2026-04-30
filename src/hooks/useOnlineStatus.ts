@@ -25,15 +25,15 @@ export function useOnlineStatus() {
         if (token) {
           await fetch('http://127.0.0.1:4002/api/profiles/status', {
             method: 'POST',
-            headers: { 
+            headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ status: 'online' })
           })
         }
-      } catch (e) {}
-      
+      } catch (e) { }
+
       const socket = socketService.getSocket()
       socket.emit('join_presence', userId)
 
@@ -45,7 +45,7 @@ export function useOnlineStatus() {
           // Use direct fetch to avoid the api utility's console logging of errors
           await fetch('http://127.0.0.1:4002/api/profiles/status', {
             method: 'POST',
-            headers: { 
+            headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
@@ -77,10 +77,10 @@ export function useOnlineStatus() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      
+
       // Set offline on unmount
       if (userId) {
-        api.post('/profiles/status', { status: 'offline' }).catch(() => {})
+        api.post('/profiles/status', { status: 'offline' }).catch(() => { })
       }
     }
   }, [user])
@@ -90,7 +90,7 @@ export function useOnlineStatus() {
 export function isUserOnline(profile: { status?: string; last_seen?: string }): boolean {
   if (profile.status !== 'online') return false
   if (!profile.last_seen) return false
-  
+
   const lastSeen = new Date(profile.last_seen).getTime()
   const now = Date.now()
   return (now - lastSeen) < OFFLINE_THRESHOLD
