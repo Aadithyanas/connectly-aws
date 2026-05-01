@@ -46,6 +46,9 @@ export function useMessages(chatId?: string) {
       return
     }
 
+    // Clear stale messages immediately when switching chats
+    setMessages([])
+
     const fetchMessages = async () => {
       setLoading(true)
       try {
@@ -62,6 +65,19 @@ export function useMessages(chatId?: string) {
     }
 
     fetchMessages()
+
+    // Re-fetch when user comes back to this tab/window
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        fetchMessages()
+      }
+    }
+    const handleFocus = () => {
+      if (isMounted) fetchMessages()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
 
     const socket = socketService.getSocket()
     
@@ -119,11 +135,14 @@ export function useMessages(chatId?: string) {
 
     return () => {
       isMounted = false
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
       socket.off('new_message', handleNewMessage)
       socket.off('chat_read', handleChatRead)
       socket.emit('leave_chat', chatId)
     }
   }, [chatId, markAsSeen, markAsDelivered])
+
 
   const sendMessage = async (content: string, mediaUrl?: string, mediaType?: string, replyTo?: string, mediaFile?: File, recipientId?: string) => {
     if (!user || !chatId) return
