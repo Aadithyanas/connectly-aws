@@ -3,10 +3,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:Aadithyanmerin@database-1.c3wmkkigaztb.eu-north-1.rds.amazonaws.com:5432/postgres';
+
+if (!process.env.DATABASE_URL) {
+  console.warn('[DB] WARNING: DATABASE_URL env var not set — using hardcoded RDS fallback!');
+}
+console.log('[DB] Connecting to:', DATABASE_URL.replace(/:([^:@]+)@/, ':***@')); // log URL with masked password
+
 // Create a new PostgreSQL connection pool
-// For now, we will use mock or standard config if not provided
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/connectly',
+  connectionString: DATABASE_URL,
   ssl: {
     rejectUnauthorized: false, // Required for AWS RDS
   },

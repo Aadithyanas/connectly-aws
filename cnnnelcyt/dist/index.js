@@ -30,7 +30,19 @@ const reports_routes_1 = __importDefault(require("./routes/reports.routes"));
 const challenges_routes_1 = __importDefault(require("./routes/challenges.routes"));
 // Enable CORS
 app.use((0, cors_1.default)({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: (origin, callback) => {
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'https://main.d3af9elhkogzdb.amplifyapp.com'
+        ];
+        if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.trycloudflare.com')) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true

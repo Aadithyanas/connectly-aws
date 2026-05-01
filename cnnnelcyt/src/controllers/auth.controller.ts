@@ -5,14 +5,27 @@ import { query } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { OAuth2Client } from 'google-auth-library';
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '867281605707-1jb8vouiv8119aieto87h1q8ooq1270e.apps.googleusercontent.com';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
+// Warn loudly at startup if env vars are missing (visible in PM2 logs)
+if (!process.env.GOOGLE_CLIENT_ID) {
+  console.warn('[Auth] WARNING: GOOGLE_CLIENT_ID env var is not set — using hardcoded fallback!');
+}
+if (!process.env.GOOGLE_CLIENT_SECRET) {
+  console.warn('[Auth] WARNING: GOOGLE_CLIENT_SECRET env var is not set — Google code exchange will fail!');
+}
+
 const googleClient = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
   'postmessage' // Required for the frontend auth-code flow
 );
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = '7d';
+
+const stringifyIfObject = (val: any) => (typeof val === 'object' ? JSON.stringify(val) : val);
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { email, password, name } = req.body;
@@ -92,9 +105,10 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       idToken = tokens.id_token;
     }
 
+    console.log('[Auth] Verifying ID token...');
     const ticket = await googleClient.verifyIdToken({
       idToken: idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: GOOGLE_CLIENT_ID,
     });
     
     const payload = ticket.getPayload();
@@ -115,12 +129,14 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       console.log('Creating new user:', userId);
       
       // Insert into auth.users
+      console.log('[Auth] Inserting into auth.users...');
       await query(
         `INSERT INTO auth.users (id, email, encrypted_password, raw_user_meta_data) VALUES ($1, $2, $3, $4)`,
-        [userId, email, 'google-oauth', { full_name: name, avatar_url: picture, provider: 'google', provider_id: googleId }]
+        [userId, email, 'google-oauth', stringifyIfObject({ full_name: name, avatar_url: picture, provider: 'google', provider_id: googleId })]
       );
       
       // Insert into public.profiles
+      console.log('[Auth] Inserting into public.profiles...');
       await query(
         `INSERT INTO public.profiles (id, name, email, avatar_url) VALUES ($1, $2, $3, $4)`,
         [userId, name, email, picture || '']
@@ -148,11 +164,16 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
     console.log('Token generated successfully');
     res.status(200).json({ token, user: { id: userId, email, name } });
   } catch (error: any) {
-    console.log('Google login error detail:', error.message);
+    console.error('Google login error detail:', error);
     if (error.response) {
       console.error('Google API error response:', error.response.data);
     }
-    res.status(500).json({ error: 'Google login failed', detail: error.message });
+    res.status(500).json({ 
+      error: 'Google login failed', 
+      message: error.message,
+      stack: error.stack,
+      detail: error.response?.data || 'No further details'
+    });
   }
 };
 
