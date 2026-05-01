@@ -54,7 +54,15 @@ export function useMessages(chatId?: string) {
       try {
         const data = await api.get(`/messages/chat/${chatId}`)
         if (isMounted) {
-          setMessages(data || [])
+          // Merge: keep any still-pending optimistic messages so a background
+          // refetch doesn't wipe a mid-flight send and cause duplicate temps
+          setMessages(prev => {
+            const serverIds = new Set((data || []).map((m: any) => m.id))
+            const pendingOptimistic = prev.filter(
+              m => typeof m.id === 'string' && m.id.startsWith('temp-') && !serverIds.has(m.id)
+            )
+            return [...(data || []), ...pendingOptimistic]
+          })
           markAsSeen()
         }
       } catch (err) {
@@ -174,7 +182,11 @@ export function useMessages(chatId?: string) {
     }
     if (replyTo) msgData.reply_to = replyTo
 
-    setMessages((prev) => [...prev, msgData])
+    // Guard: never add the same temp message twice (can happen on rapid re-renders)
+    setMessages((prev) => {
+      if (prev.some(m => m.id === tempId)) return prev
+      return [...prev, msgData]
+    })
 
     if (mediaFile) {
       const { publicUrl, mediaType: uType, error } = await uploadFile(mediaFile)
