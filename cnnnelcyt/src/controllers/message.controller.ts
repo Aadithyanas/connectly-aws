@@ -4,13 +4,13 @@ import { getIO } from '../socket';
 
 export const sendMessage = async (req: any, res: Response): Promise<void> => {
   const userId = req.user.id;
-  const { chat_id, content, media_url, media_type, reply_to, client_id } = req.body;
+  const { chat_id, content, media_url, media_type, reply_to, client_id, forwarded } = req.body;
 
   try {
     const result = await query(
-      `INSERT INTO messages (chat_id, sender_id, content, media_url, media_type, reply_to, client_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [chat_id, userId, content, media_url, media_type, reply_to || null, client_id || null]
+      `INSERT INTO messages (chat_id, sender_id, content, media_url, media_type, reply_to, client_id, forwarded)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [chat_id, userId, content, media_url, media_type, reply_to || null, client_id || null, !!forwarded]
     );
     const msg = result.rows[0];
 
@@ -24,8 +24,7 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
     // Server-side broadcast — ensures delivery even if client socket emit fails
     const io = getIO();
     if (io) {
-      // Broadcast to all in the room EXCEPT the sender (they update via API response)
-      const room = io.sockets.adapter.rooms.get(`chat:${chat_id}`);
+      // Broadcast to all in the room
       io.to(`chat:${chat_id}`).emit('new_message', { ...msg, status: 'sent' });
     }
 
@@ -41,14 +40,18 @@ export const getMessages = async (req: any, res: Response): Promise<void> => {
   const userId = req.user.id;
   const { limit = 100, offset = 0 } = req.query;
   try {
+    // Subquery to get the latest N messages, then sort them chronologically for the UI
     const result = await query(
-      `SELECT m.*,
-              json_build_object('name', p.name, 'avatar_url', p.avatar_url) as sender
-       FROM messages m
-       JOIN profiles p ON m.sender_id = p.id
-       WHERE m.chat_id = $1
-       ORDER BY m.created_at ASC
-       LIMIT $2 OFFSET $3`,
+      `SELECT * FROM (
+        SELECT m.*,
+                json_build_object('name', p.name, 'avatar_url', p.avatar_url) as sender
+        FROM messages m
+        JOIN profiles p ON m.sender_id = p.id
+        WHERE m.chat_id = $1
+        ORDER BY m.created_at DESC
+        LIMIT $2 OFFSET $3
+      ) sub
+      ORDER BY created_at ASC`,
       [chatId, limit, offset]
     );
     // Mark messages as seen & broadcast to sender via socket (server-side, reliable)
@@ -63,7 +66,6 @@ export const getMessages = async (req: any, res: Response): Promise<void> => {
         const io = getIO();
         if (io) {
           // Broadcast seen receipt to everyone in the chat room
-          // The sender's handleChatRead listener will flip ticks to blue ✓✓
           io.to(`chat:${chatId}`).emit('chat_read', {
             chatId,
             readerId: userId,

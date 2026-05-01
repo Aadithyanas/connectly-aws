@@ -113,7 +113,7 @@ export default function SharePostModal({ isOpen, onClose, post }: SharePostModal
               chat_id: activeChatId,
               content: shareContent,
               media_url: post.media_urls?.[0] || null,
-              media_type: 'image',
+              media_type: post.media_types?.[0] || 'image',
               forwarded: true
             })
           } catch (err: any) {

@@ -169,8 +169,6 @@ export const createChat = async (req: any, res: Response): Promise<void> => {
 export const getChats = async (req: any, res: Response): Promise<void> => {
   const userId = req.user.id;
   try {
-    // This query fetches chats the user is a member of, 
-    // along with the last message and other member profiles (for DMs)
     const result = await query(
       `SELECT 
         c.id, 
@@ -179,10 +177,13 @@ export const getChats = async (req: any, res: Response): Promise<void> => {
         c.avatar_url, 
         c.is_group,
         c.created_at,
+        c.cover_url,
         (SELECT json_build_object(
           'content', m.content, 
           'created_at', m.created_at,
-          'sender_id', m.sender_id
+          'sender_id', m.sender_id,
+          'media_url', m.media_url,
+          'media_type', m.media_type
         ) FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
         (SELECT json_agg(json_build_object(
           'id', p.id, 
@@ -201,7 +202,7 @@ export const getChats = async (req: any, res: Response): Promise<void> => {
        FROM chats c
        JOIN chat_members cm ON c.id = cm.chat_id
        WHERE cm.user_id = $1
-       ORDER BY c.created_at DESC`,
+       ORDER BY (SELECT MAX(created_at) FROM messages m3 WHERE m3.chat_id = c.id) DESC NULLS LAST`,
       [userId]
     );
     res.status(200).json(result.rows);

@@ -88,7 +88,16 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
         }
 
         const lastMsg = chat.last_message
-        const lastMsgContent = lastMsg?.content || 'No messages yet'
+        let lastMsgContent = lastMsg?.content || ''
+        
+        if (!lastMsgContent && lastMsg?.media_url) {
+          if (lastMsg.media_type === 'image') lastMsgContent = '📷 Image'
+          else if (lastMsg.media_type === 'video') lastMsgContent = '🎥 Video'
+          else if (lastMsg.media_type === 'audio') lastMsgContent = '🎵 Audio'
+          else lastMsgContent = '📎 Attachment'
+        }
+        
+        if (!lastMsgContent) lastMsgContent = 'No messages yet'
         const lastMsgTime = lastMsg?.created_at || ''
 
         let lastTime = ''
