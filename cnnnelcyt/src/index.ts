@@ -31,12 +31,19 @@ import challengeRoutes from './routes/challenges.routes';
 
 // Enable CORS
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://127.0.0.1:3000',
-    'https://main.d3af9elhkogzdb.amplifyapp.com',
-    'https://ate-expansion-enquiry-movers.trycloudflare.com'
-  ],
+  origin: (origin, callback) => {
+    const allowedOrigins = [
+      'http://localhost:3000', 
+      'http://127.0.0.1:3000',
+      'https://main.d3af9elhkogzdb.amplifyapp.com'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.trycloudflare.com')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
