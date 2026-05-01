@@ -45,7 +45,15 @@ function loadFromCache(chatId: string): any[] {
 }
 
 export function useMessages(chatId?: string) {
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<any[]>(() => {
+    if (typeof window === 'undefined' || !chatId) return []
+    try {
+      const raw = localStorage.getItem(`chat_msgs_${chatId}`)
+      return raw ? JSON.parse(raw) : []
+    } catch (_) {
+      return []
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(true)
@@ -81,7 +89,13 @@ export function useMessages(chatId?: string) {
       const pendingOptimistic = prev.filter(
         m => typeof m.id === 'string' && m.id.startsWith('temp-')
       )
-      const merged = dedupMessages([...serverData, ...pendingOptimistic])
+      
+      // Filter out any temp message that has been confirmed by the server (matched by client_id)
+      const filteredOptimistic = pendingOptimistic.filter(opt => 
+        !serverData.some(srv => srv.client_id === opt.id || srv.id === opt.id)
+      )
+
+      const merged = dedupMessages([...serverData, ...filteredOptimistic])
       // Save real messages to cache (without temp)
       if (chatId) saveToCache(chatId, merged)
       return merged
@@ -96,10 +110,14 @@ export function useMessages(chatId?: string) {
       return
     }
 
-    // 1. Show cached messages INSTANTLY (no loading flash)
+    // 1. Refresh from cache immediately in case it changed elsewhere
     const cached = loadFromCache(chatId)
     if (cached.length > 0) {
-      setMessages(cached)
+      setMessages(prev => {
+        // Only update if cache is different from current (to avoid unnecessary re-renders)
+        if (prev.length === 0) return cached
+        return prev
+      })
     } else {
       setMessages([])
     }
@@ -166,12 +184,12 @@ export function useMessages(chatId?: string) {
           : null
 
         if (existingById) {
-          return prev.map(m => m.id === payload.id && isStatusForward(m.status, payload.status)
-            ? { ...m, status: payload.status }
-            : m
-          )
+          return prev.map(m => m.id === payload.id ? { ...m, ...payload, status: isStatusForward(m.status, payload.status) ? payload.status : m.status } : m)
         }
-        if (existingByClientId) return prev
+
+        if (existingByClientId) {
+          return prev.map(m => (m.client_id === payload.client_id || m.id === payload.client_id) ? payload : m)
+        }
 
         const next = [...prev, payload]
         // Update cache with new message
@@ -255,7 +273,7 @@ export function useMessages(chatId?: string) {
       finalMediaType = type === 'image' || type === 'video' || type === 'audio' ? type : 'file'
     }
 
-    const tempId = `temp-${Date.now()}`
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
     const msgData: any = {
       id: tempId,
       client_id: tempId,
