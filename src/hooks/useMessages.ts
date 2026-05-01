@@ -4,29 +4,66 @@ import { socketService } from '@/utils/socket'
 import { useAuth } from '@/context/AuthContext'
 
 const STATUS_ORDER: Record<string, number> = { sending: 0, sent: 1, delivered: 2, seen: 3 }
+const CACHE_KEY = (chatId: string) => `chat_msgs_${chatId}`
+const CACHE_LIMIT = 100 // Max messages to persist per chat in localStorage
 
 function isStatusForward(oldStatus: string, newStatus: string): boolean {
   return (STATUS_ORDER[newStatus] ?? 0) > (STATUS_ORDER[oldStatus] ?? 0)
 }
 
+// Deduplicate a message array by id, keeping the entry with the higher status
+function dedupMessages(msgs: any[]): any[] {
+  const map = new Map<string, any>()
+  for (const m of msgs) {
+    const existing = map.get(m.id)
+    if (!existing || isStatusForward(existing.status, m.status)) {
+      map.set(m.id, m)
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+}
+
+function saveToCache(chatId: string, messages: any[]) {
+  try {
+    // Only cache real (non-temp) messages
+    const toCache = messages
+      .filter(m => typeof m.id === 'string' && !m.id.startsWith('temp-'))
+      .slice(-CACHE_LIMIT)
+    localStorage.setItem(CACHE_KEY(chatId), JSON.stringify(toCache))
+  } catch (_) {}
+}
+
+function loadFromCache(chatId: string): any[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY(chatId))
+    return raw ? JSON.parse(raw) : []
+  } catch (_) {
+    return []
+  }
+}
+
 export function useMessages(chatId?: string) {
   const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasOlderMessages, setHasOlderMessages] = useState(true)
   const { user } = useAuth()
-  
+
   const currentUserRef = useRef<any>(null)
-  
+  const offsetRef = useRef(0)           // how many messages we've fetched total (for pagination)
+  const PAGE_SIZE = 50                  // messages per page
+
   useEffect(() => {
     currentUserRef.current = user
   }, [user])
-  
+
   const markAsSeen = useCallback(async () => {
     if (!chatId || !user) return
     try {
       const socket = socketService.getSocket()
       socket.emit('chat_read', { chatId, readerId: user.id, status: 'seen' })
-      // If we implement the API later, we can uncomment this:
-      // await api.post(`/messages/${chatId}/seen`, {})
     } catch(e) {}
   }, [chatId, user])
 
@@ -38,6 +75,19 @@ export function useMessages(chatId?: string) {
     } catch(e) {}
   }, [chatId, user])
 
+  // Merge server data into state, preserving pending optimistic messages
+  const mergeServerMessages = useCallback((serverData: any[]) => {
+    setMessages(prev => {
+      const pendingOptimistic = prev.filter(
+        m => typeof m.id === 'string' && m.id.startsWith('temp-')
+      )
+      const merged = dedupMessages([...serverData, ...pendingOptimistic])
+      // Save real messages to cache (without temp)
+      if (chatId) saveToCache(chatId, merged)
+      return merged
+    })
+  }, [chatId])
+
   useEffect(() => {
     let isMounted = true
 
@@ -46,23 +96,28 @@ export function useMessages(chatId?: string) {
       return
     }
 
-    // Clear stale messages immediately when switching chats
-    setMessages([])
+    // 1. Show cached messages INSTANTLY (no loading flash)
+    const cached = loadFromCache(chatId)
+    if (cached.length > 0) {
+      setMessages(cached)
+    } else {
+      setMessages([])
+    }
 
+    offsetRef.current = 0
+    setHasOlderMessages(true)
+
+    // 2. Fetch latest PAGE_SIZE messages from server in background
     const fetchMessages = async () => {
       setLoading(true)
       try {
-        const data = await api.get(`/messages/chat/${chatId}`)
+        const data = await api.get(`/messages/chat/${chatId}?limit=${PAGE_SIZE}&offset=0`)
         if (isMounted) {
-          // Merge: keep any still-pending optimistic messages so a background
-          // refetch doesn't wipe a mid-flight send and cause duplicate temps
-          setMessages(prev => {
-            const serverIds = new Set((data || []).map((m: any) => m.id))
-            const pendingOptimistic = prev.filter(
-              m => typeof m.id === 'string' && m.id.startsWith('temp-') && !serverIds.has(m.id)
-            )
-            return [...(data || []), ...pendingOptimistic]
-          })
+          offsetRef.current = (data || []).length
+          if ((data || []).length < PAGE_SIZE) {
+            setHasOlderMessages(false)
+          }
+          mergeServerMessages(data || [])
           markAsSeen()
         }
       } catch (err) {
@@ -74,47 +129,56 @@ export function useMessages(chatId?: string) {
 
     fetchMessages()
 
-    // Re-fetch when user comes back to this tab/window
+    // 3. Re-fetch when user comes back to the tab (but not more than once every 5 seconds)
+    let lastRefetch = Date.now()
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isMounted) {
-        fetchMessages()
+        const now = Date.now()
+        if (now - lastRefetch > 5000) {
+          lastRefetch = now
+          fetchMessages()
+        }
       }
     }
     const handleFocus = () => {
-      if (isMounted) fetchMessages()
+      if (isMounted) {
+        const now = Date.now()
+        if (now - lastRefetch > 5000) {
+          lastRefetch = now
+          fetchMessages()
+        }
+      }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
 
     const socket = socketService.getSocket()
-    
+
     const handleNewMessage = (payload: any) => {
       if (payload.chat_id !== chatId) return
       const me = currentUserRef.current
 
       setMessages((prev) => {
-        // Dedup: if message already exists (by id or matching client_id temp), update it
         const existingById = prev.find(m => m.id === payload.id)
         const existingByClientId = payload.client_id
           ? prev.find(m => m.client_id === payload.client_id || m.id === payload.client_id)
           : null
 
         if (existingById) {
-          // Already in list — update status only if forwarding (sent→delivered→seen)
           return prev.map(m => m.id === payload.id && isStatusForward(m.status, payload.status)
             ? { ...m, status: payload.status }
             : m
           )
         }
-        if (existingByClientId) {
-          // Sender's optimistic message — replace temp with real (already done in sendMessage callback)
-          return prev
-        }
-        return [...prev, payload]
+        if (existingByClientId) return prev
+
+        const next = [...prev, payload]
+        // Update cache with new message
+        if (chatId) saveToCache(chatId, next)
+        return next
       })
 
-      // Recipient auto-marks as seen
       if (payload.sender_id !== me?.id) {
         markAsDelivered()
         setTimeout(() => markAsSeen(), 500)
@@ -126,7 +190,7 @@ export function useMessages(chatId?: string) {
       const { readerId, status } = payload
       const me = currentUserRef.current
       if (!me?.id || readerId === me.id) return
-      
+
       setMessages((prev) =>
         prev.map((m) =>
           m.sender_id === me.id && isStatusForward(m.status, status)
@@ -135,10 +199,9 @@ export function useMessages(chatId?: string) {
         )
       )
     }
-    
+
     socket.on('new_message', handleNewMessage)
     socket.on('chat_read', handleChatRead)
-    
     socket.emit('join_chat', chatId)
 
     return () => {
@@ -149,8 +212,36 @@ export function useMessages(chatId?: string) {
       socket.off('chat_read', handleChatRead)
       socket.emit('leave_chat', chatId)
     }
-  }, [chatId, markAsSeen, markAsDelivered])
+  }, [chatId, markAsSeen, markAsDelivered, mergeServerMessages])
 
+  // Called when user scrolls to the TOP — loads older messages
+  const loadOlderMessages = useCallback(async () => {
+    if (!chatId || loadingOlder || !hasOlderMessages) return
+
+    setLoadingOlder(true)
+    try {
+      const currentOffset = offsetRef.current
+      const data = await api.get(`/messages/chat/${chatId}?limit=${PAGE_SIZE}&offset=${currentOffset}`)
+      if (!data || data.length === 0) {
+        setHasOlderMessages(false)
+        return
+      }
+      if (data.length < PAGE_SIZE) {
+        setHasOlderMessages(false)
+      }
+      offsetRef.current = currentOffset + data.length
+
+      // Prepend older messages to the top
+      setMessages(prev => {
+        const merged = dedupMessages([...data, ...prev])
+        return merged
+      })
+    } catch (err) {
+      console.error('Failed to load older messages', err)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [chatId, loadingOlder, hasOlderMessages])
 
   const sendMessage = async (content: string, mediaUrl?: string, mediaType?: string, replyTo?: string, mediaFile?: File, recipientId?: string) => {
     if (!user || !chatId) return
@@ -182,7 +273,7 @@ export function useMessages(chatId?: string) {
     }
     if (replyTo) msgData.reply_to = replyTo
 
-    // Guard: never add the same temp message twice (can happen on rapid re-renders)
+    // Guard: never add the same temp message twice
     setMessages((prev) => {
       if (prev.some(m => m.id === tempId)) return prev
       return [...prev, msgData]
@@ -210,9 +301,11 @@ export function useMessages(chatId?: string) {
 
       const data = result
       if (data && data.id) {
-        // Replace the optimistic temp message with the real saved message
-        setMessages((prev) => prev.map(m => m.id === tempId ? { ...data, status: 'sent', sender: msgData.sender } : m))
-        // NOTE: Server now broadcasts new_message to the room — no need to emit from client
+        setMessages((prev) => {
+          const next = prev.map(m => m.id === tempId ? { ...data, status: 'sent', sender: msgData.sender } : m)
+          if (chatId) saveToCache(chatId, next)
+          return next
+        })
       }
       return { error: null }
     } catch (err: any) {
@@ -251,11 +344,10 @@ export function useMessages(chatId?: string) {
   }
 
   const uploadFile = async (file: File) => {
-    // keeping cloudinary logic untouched
     const isVideo = file.type.startsWith('video/')
     const isAudio = file.type.startsWith('audio/')
     const resourceType = (isVideo || isAudio) ? 'video' : (file.type.startsWith('image/') ? 'image' : 'raw')
-    
+
     try {
       const signRes = await fetch('/api/cloudinary/sign', {
         method: 'POST',
@@ -263,7 +355,7 @@ export function useMessages(chatId?: string) {
         body: JSON.stringify({ folder: `chat/${chatId || 'general'}` })
       })
       const signData = await signRes.json()
-      
+
       const formData = new FormData()
       formData.append('file', file)
       formData.append('api_key', signData.apiKey)
@@ -276,7 +368,7 @@ export function useMessages(chatId?: string) {
         body: formData
       })
       const uploadData = await uploadRes.json()
-      
+
       if (!uploadRes.ok) {
         throw new Error(uploadData.error?.message || 'Cloudinary upload failed')
       }
@@ -287,5 +379,16 @@ export function useMessages(chatId?: string) {
     }
   }
 
-  return { messages, loading, sendMessage, uploadFile, markAsSeen, forwardMessage, deleteMessage }
+  return {
+    messages,
+    loading,
+    loadingOlder,
+    hasOlderMessages,
+    loadOlderMessages,
+    sendMessage,
+    uploadFile,
+    markAsSeen,
+    forwardMessage,
+    deleteMessage
+  }
 }

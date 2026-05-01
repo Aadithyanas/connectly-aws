@@ -89,6 +89,9 @@ interface Message {
 interface MessageListProps {
   messages: Message[]
   loading?: boolean
+  loadingOlder?: boolean
+  hasOlderMessages?: boolean
+  onLoadOlder?: () => void
   chatId?: string
   currentUserId: string
   otherUserAvatar?: string
@@ -169,7 +172,21 @@ function ImageAlbum({ items, isOwn, onImageClick, downloadedIds, handleDownload 
   )
 }
 
-export default function MessageList({ messages, loading, chatId, currentUserId, otherUserAvatar, currentUserAvatar, isGroup, onReply, onForward, onDelete }: MessageListProps) {
+export default function MessageList({ 
+  messages, 
+  loading, 
+  loadingOlder,
+  hasOlderMessages,
+  onLoadOlder,
+  chatId, 
+  currentUserId, 
+  otherUserAvatar, 
+  currentUserAvatar, 
+  isGroup, 
+  onReply, 
+  onForward, 
+  onDelete 
+}: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
@@ -179,6 +196,8 @@ export default function MessageList({ messages, loading, chatId, currentUserId, 
   const [videoPlayer, setVideoPlayer] = useState<string | null>(null)
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set())
   const [menuAnchor, setMenuAnchor] = useState<{ id: string, x: number, y: number } | null>(null)
+  const [prevScrollHeight, setPrevScrollHeight] = useState<number>(0)
+  const [isPrepending, setIsPrepending] = useState(false)
   
   const { settings, isLoaded } = useSettings()
 
@@ -199,7 +218,7 @@ export default function MessageList({ messages, loading, chatId, currentUserId, 
   }, [chatId])
 
   useEffect(() => {
-    if (scrollRef.current && isAtBottomRef.current) {
+    if (scrollRef.current && isAtBottomRef.current && !isPrepending) {
       // Use both methods for reliability across browsers/devices
       if (bottomRef.current) {
         bottomRef.current.scrollIntoView({ behavior: 'auto' })
@@ -215,13 +234,37 @@ export default function MessageList({ messages, loading, chatId, currentUserId, 
       }, 50)
       return () => clearTimeout(timeout)
     }
-  }, [messages])
+  }, [messages, isPrepending])
+
+  // Maintain scroll position when loading older messages
+  useEffect(() => {
+    if (loadingOlder && scrollRef.current) {
+      setPrevScrollHeight(scrollRef.current.scrollHeight)
+      setIsPrepending(true)
+    }
+  }, [loadingOlder])
+
+  useEffect(() => {
+    if (!loadingOlder && isPrepending && scrollRef.current) {
+      const { scrollHeight } = scrollRef.current
+      if (prevScrollHeight > 0) {
+        scrollRef.current.scrollTop = scrollHeight - prevScrollHeight
+      }
+      setPrevScrollHeight(0)
+      setIsPrepending(false)
+    }
+  }, [messages, loadingOlder, isPrepending, prevScrollHeight])
 
   const handleScroll = () => {
     if (scrollRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
       // 100px threshold for "near bottom"
       isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 100
+
+      // Detect top for lazy loading
+      if (scrollTop < 50 && hasOlderMessages && !loadingOlder && onLoadOlder && !loading) {
+        onLoadOlder()
+      }
     }
   }
 
@@ -342,7 +385,13 @@ export default function MessageList({ messages, loading, chatId, currentUserId, 
           Start a conversation...
         </div>
       ) : (
-        processedMessages.map((message) => {
+        <>
+          {loadingOlder && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 text-white/40 animate-spin" />
+            </div>
+          )}
+          {processedMessages.map((message) => {
             const isOwn = !!currentUserId && message.sender_id === currentUserId
             const isHovered = hoveredId === message.id
             const swipeThreshold = 60
@@ -716,6 +765,7 @@ export default function MessageList({ messages, loading, chatId, currentUserId, 
             </motion.div>
           );
         })
+        </>
       )}
 
       {/* Message Action Menu */}

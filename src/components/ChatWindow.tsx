@@ -27,7 +27,7 @@ interface ChatWindowProps {
 import { useAuth } from '@/context/AuthContext'
 
 export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: ChatWindowProps) {
-  const { messages, loading, sendMessage, uploadFile, markAsSeen, forwardMessage, deleteMessage } = useMessages(chatId)
+  const { messages, loading, loadingOlder, hasOlderMessages, loadOlderMessages, sendMessage, uploadFile, markAsSeen, forwardMessage, deleteMessage } = useMessages(chatId)
   const { onlineUsers, typingUsers, sendTypingStatus } = usePresence(chatId || 'global')
   const { acceptInvitation } = useGroups()
   const { user } = useAuth()
@@ -454,6 +454,9 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
               <MessageList 
                 messages={searchQuery ? messages.filter(m => m.content?.toLowerCase()?.includes(searchQuery.toLowerCase())) : messages} 
                 loading={loading}
+                loadingOlder={loadingOlder}
+                hasOlderMessages={hasOlderMessages}
+                onLoadOlder={loadOlderMessages}
                 chatId={chatId}
                 currentUserId={user?.id || ''} 
                 otherUserAvatar={otherUser?.avatar_url}
