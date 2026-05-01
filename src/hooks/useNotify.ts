@@ -10,7 +10,8 @@ async function getSocket() {
   if (typeof window === 'undefined') return null
   if (_io) return _io
   const { io } = await import('socket.io-client')
-  _io = io('http://127.0.0.1:4002', { transports: ['websocket'], autoConnect: true })
+  const url = process.env.NEXT_PUBLIC_SOCKET_URL || (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com')
+  _io = io(url, { transports: ['websocket'], autoConnect: true })
   return _io
 }
 

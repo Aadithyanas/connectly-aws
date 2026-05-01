@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4002';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://craft-accordingly-ave-details.trycloudflare.com';
 
 class SocketService {
   private socket: Socket | null = null;

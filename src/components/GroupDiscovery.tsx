@@ -57,7 +57,7 @@ function MemberAvatarStack({ members, theme }: { members: any[], theme: typeof G
   )
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4002'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com'
 
 export default function GroupDiscovery({ onSelectChat, currentUserId }: GroupDiscoveryProps) {
   const [groups, setGroups] = useState<any[]>([])

@@ -23,7 +23,8 @@ export function useOnlineStatus() {
       try {
         const token = localStorage.getItem('token')
         if (token) {
-          await fetch('http://127.0.0.1:4002/api/profiles/status', {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://craft-accordingly-ave-details.trycloudflare.com/api'
+          await fetch(`${apiUrl}/profiles/status`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -43,7 +44,8 @@ export function useOnlineStatus() {
           const token = localStorage.getItem('token')
           if (!token) return
           // Use direct fetch to avoid the api utility's console logging of errors
-          await fetch('http://127.0.0.1:4002/api/profiles/status', {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://craft-accordingly-ave-details.trycloudflare.com/api'
+          await fetch(`${apiUrl}/profiles/status`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -63,7 +65,8 @@ export function useOnlineStatus() {
     const handleBeforeUnload = () => {
       if (userId) {
         // Use sendBeacon for reliability on tab close
-        const url = 'http://127.0.0.1:4002/api/profiles/status'
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://craft-accordingly-ave-details.trycloudflare.com/api'
+        const url = `${apiUrl}/profiles/status`
         const headers = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`

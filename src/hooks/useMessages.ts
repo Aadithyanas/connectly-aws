@@ -240,13 +240,15 @@ export function useMessages(chatId?: string) {
       formData.append('signature', signData.signature)
       formData.append('folder', `chat/${chatId || 'general'}`)
 
-      const uploadData = await new Promise<any>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloudName}/${resourceType}/upload`)
-        xhr.addEventListener('load', () => resolve(JSON.parse(xhr.responseText)))
-        xhr.addEventListener('error', () => reject(new Error('Network error')))
-        xhr.send(formData)
+      const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/${resourceType}/upload`, {
+        method: 'POST',
+        body: formData
       })
+      const uploadData = await uploadRes.json()
+      
+      if (!uploadRes.ok) {
+        throw new Error(uploadData.error?.message || 'Cloudinary upload failed')
+      }
 
       return { publicUrl: uploadData.secure_url, mediaType: resourceType }
     } catch (err: any) {

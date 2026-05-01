@@ -10,7 +10,7 @@ interface ChallengesRoomProps {
   onSessionChange?: (isActive: boolean) => void
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4002'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com'
 
 export default function ChallengesRoom({ onSessionChange }: ChallengesRoomProps) {
   const [challenges, setChallenges] = useState<any[]>([])
