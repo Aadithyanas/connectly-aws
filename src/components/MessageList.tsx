@@ -764,7 +764,7 @@ export default function MessageList({
               )}
             </motion.div>
           );
-        })
+        })}
         </>
       )}
 
