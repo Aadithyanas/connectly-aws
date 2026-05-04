@@ -36,12 +36,14 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:3000', 
       'http://127.0.0.1:3000',
-      'https://main.d3af9elhkogzdb.amplifyapp.com'
+      'https://main.d3af9elhkogzdb.amplifyapp.com',
+      'https://connectly.aadithyan.in'
     ];
     
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.trycloudflare.com')) {
       callback(null, true);
     } else {
+      console.warn('[CORS] Blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -49,6 +51,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// Security headers for Google OAuth (COOP/CORP)
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
+
 app.use(express.json());
 
 // Register Routes
