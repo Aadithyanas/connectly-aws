@@ -15,7 +15,7 @@ import { useStatuses, Status } from '@/hooks/useStatuses'
 import { api } from '@/utils/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import SettingsModal from '@/components/SettingsModal'
-import { Home, MessageCircle, CircleDashed as InitiativeCircle, Plus, Trophy, Users } from 'lucide-react'
+import { Home, MessageCircle, CircleDashed as InitiativeCircle, Plus, Trophy, Users, Briefcase } from 'lucide-react'
 
 import { useAuth } from '@/context/AuthContext'
 
