@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/utils/api'
-import { X, Camera, Edit2, Check, User, Users, ShieldCheck, LogOut, Trash2, Mail, Info, Briefcase, GraduationCap, Globe, Link, Signal, Building2, BookOpen, Rocket, Play, Plus, Trophy, Download } from 'lucide-react'
+import { X, Camera, Edit2, Check, User, Users, ShieldCheck, LogOut, Trash2, Mail, Info, Briefcase, GraduationCap, Globe, Link, Signal, Building2, BookOpen, Rocket, Play, Plus, Trophy, Download, Smartphone } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import { useIsUserOnline } from '@/hooks/useOnlineStatus'
@@ -1256,7 +1256,6 @@ export default function InfoSidebar({ isOpen, onClose, type, data, onViewPosts }
                         </div>
                       </div>
                     </div>
-  )}
                   </>
                 )}
                 {type === 'contact' && (
