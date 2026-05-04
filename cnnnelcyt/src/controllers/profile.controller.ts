@@ -85,38 +85,35 @@ export const updateProfile = async (req: any, res: Response): Promise<void> => {
   } = req.body;
 
   try {
-    // Build update query dynamically or use a direct mapping.
-    // For simplicity and security (since we trust the body from our own middleware),
-    // we use a direct update with fallback to existing values if field is undefined.
     const result = await query(
       `UPDATE profiles
-       SET name               = $1,
-           bio                = $2,
+       SET name               = COALESCE($1,  name),
+           bio                = COALESCE($2,  bio),
            avatar_url         = COALESCE($3,  avatar_url),
            status             = COALESCE($4,  status),
            last_seen          = COALESCE($5,  last_seen),
-           linkedin           = $6,
-           github             = $7,
-           portfolio          = $8,
-           instagram          = $9,
-           college_name       = $10,
-           course             = $11,
-           job_role           = $12,
-           experience_years   = $13,
-           experience         = $14,
-           education          = $15,
-           skills             = $16,
-           resume_url         = $17,
-           certificates       = $18,
+           linkedin           = COALESCE($6,  linkedin),
+           github             = COALESCE($7,  github),
+           portfolio          = COALESCE($8,  portfolio),
+           instagram          = COALESCE($9,  instagram),
+           college_name       = COALESCE($10, college_name),
+           course             = COALESCE($11, course),
+           job_role           = COALESCE($12, job_role),
+           experience_years   = COALESCE($13, experience_years),
+           experience         = COALESCE($14, experience),
+           education          = COALESCE($15, education),
+           skills             = COALESCE($16, skills),
+           resume_url         = COALESCE($17, resume_url),
+           certificates       = COALESCE($18, certificates),
            availability_status = COALESCE($19, availability_status)
        WHERE id = $20
        RETURNING *`,
       [
         name !== undefined ? name : null,
         bio !== undefined ? bio : null,
-        avatar_url ?? null,
-        status ?? null,
-        last_seen ?? null,
+        avatar_url !== undefined ? avatar_url : null,
+        status !== undefined ? status : null,
+        last_seen !== undefined ? last_seen : null,
         linkedin !== undefined ? linkedin : null,
         github !== undefined ? github : null,
         portfolio !== undefined ? portfolio : null,
