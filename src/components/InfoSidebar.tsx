@@ -1217,38 +1217,46 @@ export default function InfoSidebar({ isOpen, onClose, type, data, onViewPosts }
                       <span className="text-sm">{loading ? 'Logging out...' : 'Logout Account'}</span>
                     </button>
 
-                    {isInstallable && showPwaBanner && (
-                      <div className="mt-8 pt-6 border-t border-white/[0.04] animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="bg-gradient-to-br from-[#bc9dff]/10 to-white/[0.02] rounded-2xl p-5 border border-[#bc9dff]/20 relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform pointer-events-none">
-                            <Download className="w-16 h-16 text-[#bc9dff]" />
+                    {/* PWA / Mobile App Section */}
+                    <div className="mt-8 pt-6 border-t border-white/[0.04]">
+                      <div className="bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-white/[0.02] rounded-2xl p-5 border border-white/[0.06] relative overflow-hidden group">
+                        <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 transition-transform pointer-events-none">
+                          <Smartphone className="w-32 h-32 text-white" />
+                        </div>
+                        
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                              <Smartphone className="w-4 h-4 text-white" />
+                            </div>
+                            <h4 className="text-white text-sm font-bold">Connectly Mobile</h4>
                           </div>
                           
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setShowPwaBanner(false); }} 
-                            className="absolute top-3 right-3 p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-zinc-400 hover:text-white transition-colors z-20 backdrop-blur-md"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <p className="text-[12px] text-zinc-400 mb-4 leading-relaxed">
+                            Transform Nexus into a full-screen mobile app for the fastest experience.
+                          </p>
 
-                          <div className="relative z-10 pr-8">
-                            <h4 className="text-white text-sm font-bold mb-1.5 flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#bc9dff] animate-pulse" />
-                              Install Connectly
-                            </h4>
-                            <p className="text-[12px] text-zinc-400 mb-4 leading-relaxed max-w-[200px]">
-                              Add to your home screen for a premium standalone experience.
-                            </p>
+                          {isInstallable ? (
                             <button 
                               onClick={installApp}
-                              className="px-5 py-2.5 rounded-xl bg-[#bc9dff] text-black text-[11px] font-bold tracking-wide hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(188,157,255,0.4)]"
+                              className="w-full py-2.5 rounded-xl bg-white text-black text-[11px] font-bold tracking-wide hover:scale-[1.02] active:scale-95 transition-all shadow-xl flex items-center justify-center gap-2"
                             >
-                              Launch Desktop App
+                              <Download className="w-3.5 h-3.5" />
+                              Install Application
                             </button>
-                          </div>
+                          ) : (
+                            <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                              <p className="text-[10px] text-zinc-500 leading-tight">
+                                <span className="text-white font-bold block mb-1">How to install:</span>
+                                1. Tap the share icon <span className="inline-block px-1 bg-white/10 rounded">↑</span> below<br/>
+                                2. Select <span className="text-white font-medium">"Add to Home Screen"</span>
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </div>
+  )}
                   </>
                 )}
                 {type === 'contact' && (
