@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '@/utils/api'
 import { socketService } from '@/utils/socket'
 import { useAuth } from '@/context/AuthContext'
+import imageCompression from 'browser-image-compression'
 
 const STATUS_ORDER: Record<string, number> = { sending: 0, sent: 1, delivered: 2, seen: 3 }
 const CACHE_KEY = (chatId: string) => `chat_msgs_${chatId}`
@@ -429,14 +430,17 @@ export function useMessages(chatId?: string) {
     }
   }
 
-  const uploadQueue = useRef<Array<{ file: File, resolve: (val: any) => void }>>([])
-  const isUploading = useRef(false)
+  const uploadQueue = useRef<Array<{ file: File, resolve: (val: any) => void, retries: number }>>([])
+  const activeUploads = useRef(0)
+  const MAX_CONCURRENT_UPLOADS = 3
 
   const processUploadQueue = async () => {
-    if (isUploading.current || uploadQueue.current.length === 0) return
-    isUploading.current = true
+    if (activeUploads.current >= MAX_CONCURRENT_UPLOADS || uploadQueue.current.length === 0) return
     
-    const { file, resolve } = uploadQueue.current.shift()!
+    activeUploads.current++
+    const item = uploadQueue.current.shift()!
+    const { file, resolve, retries } = item
+
     try {
       const isVideo = file.type.startsWith('video/')
       const isAudio = file.type.startsWith('audio/')
@@ -447,6 +451,8 @@ export function useMessages(chatId?: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder: `chat/${chatId || 'general'}` })
       })
+      
+      if (!signRes.ok) throw new Error('Failed to get upload signature')
       const signData = await signRes.json()
 
       const formData = new FormData()
@@ -471,16 +477,38 @@ export function useMessages(chatId?: string) {
         mediaType: resourceType === 'raw' ? 'file' : resourceType 
       })
     } catch (err: any) {
-      resolve({ error: err.message })
+      if (retries < 2) {
+        console.warn(`[Upload] Retrying ${file.name} (${retries + 1}/2)...`)
+        uploadQueue.current.push({ ...item, retries: retries + 1 })
+      } else {
+        console.error(`[Upload] Final failure for ${file.name}:`, err)
+        resolve({ error: err.message })
+      }
+    } finally {
+      activeUploads.current--
+      processUploadQueue()
     }
-    
-    isUploading.current = false
-    processUploadQueue()
   }
 
-  const uploadFile = (file: File): Promise<any> => {
+  const uploadFile = async (file: File): Promise<any> => {
+    let fileToUpload = file
+
+    // Compress images if possible
+    if (file.type.startsWith('image/')) {
+      try {
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1920,
+          useWebWorker: true
+        }
+        fileToUpload = await imageCompression(file, options)
+      } catch (error) {
+        console.warn('[Upload] Compression failed, using original file:', error)
+      }
+    }
+
     return new Promise((resolve) => {
-      uploadQueue.current.push({ file, resolve })
+      uploadQueue.current.push({ file: fileToUpload, resolve, retries: 0 })
       processUploadQueue()
     })
   }
