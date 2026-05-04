@@ -8,6 +8,8 @@ interface GroupDiscoveryProps {
   currentUserId: string
 }
 
+import { api } from '@/utils/api'
+
 // Deterministic gradient per group based on name hash
 const GROUP_THEMES = [
   { gradient: 'from-[#667eea] to-[#764ba2]', accent: '#667eea', tag: 'bg-purple-500/20 text-purple-300 border-purple-500/20' },
@@ -57,7 +59,6 @@ function MemberAvatarStack({ members, theme }: { members: any[], theme: typeof G
   )
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com'
 
 export default function GroupDiscovery({ onSelectChat, currentUserId }: GroupDiscoveryProps) {
   const [groups, setGroups] = useState<any[]>([])
@@ -69,12 +70,7 @@ export default function GroupDiscovery({ onSelectChat, currentUserId }: GroupDis
     const fetchPublicGroups = async () => {
       setLoading(true)
       try {
-        const token = localStorage.getItem('token')
-        const res = await fetch(`${API_BASE}/api/chats/public`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        })
-        if (!res.ok) throw new Error('Failed to fetch')
-        const data = await res.json()
+        const data = await api.get('/chats/public')
         // Filter out groups the current user is already a member of
         const filtered = (data || []).filter((g: any) => !g.myStatus)
         setGroups(filtered)
@@ -90,18 +86,8 @@ export default function GroupDiscovery({ onSelectChat, currentUserId }: GroupDis
   const handleJoinRequest = async (chatId: string) => {
     setRequestingIds(prev => new Set(prev).add(chatId))
     try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`${API_BASE}/api/chats/${chatId}/members`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ status: 'requesting' })
-      })
-      if (res.ok) {
-        setGroups(prev => prev.map(g => g.id === chatId ? { ...g, myStatus: 'requesting' } : g))
-      }
+      await api.post(`/chats/${chatId}/members`, { status: 'requesting' })
+      setGroups(prev => prev.map(g => g.id === chatId ? { ...g, myStatus: 'requesting' } : g))
     } catch (err) {
       console.error('Error requesting to join group:', err)
     } finally {

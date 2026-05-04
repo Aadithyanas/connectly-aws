@@ -130,8 +130,9 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
             const members = chat.members || []
             setGroupMemberCount(members.length)
             
-            // In our simple backend, if you can get the chat, you are a member
-            const membership = { role: 'member', status: 'joined' } 
+            // Find the current user's role instead of hardcoding 'member'
+            const me = members.find((m: any) => m.id === user.id)
+            const membership = me ? { role: me.role, status: me.status } : { role: 'member', status: 'joined' }
             setMyMembership(membership)
             localStorage.setItem(`membership_${chatId}`, JSON.stringify(membership))
           } else {

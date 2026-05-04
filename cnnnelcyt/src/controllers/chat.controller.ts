@@ -99,13 +99,14 @@ export const patchChat = async (req: any, res: Response): Promise<void> => {
 
 export const addMember = async (req: any, res: Response): Promise<void> => {
   const { id } = req.params;
-  const { userId, status = 'joined' } = req.body;
+  const userId = req.body.userId || req.user.id;
+  const { status = 'joined' } = req.body;
   try {
     await query(
-      `INSERT INTO chat_members (chat_id, user_id, role, joined_at)
-       VALUES ($1, $2, 'member', NOW())
-       ON CONFLICT (chat_id, user_id) DO UPDATE SET role = 'member'`,
-      [id, userId]
+      `INSERT INTO chat_members (chat_id, user_id, role, status, joined_at)
+       VALUES ($1, $2, 'member', $3, NOW())
+       ON CONFLICT (chat_id, user_id) DO UPDATE SET status = $3`,
+      [id, userId, status]
     );
     res.status(201).json({ success: true });
   } catch (error) {
@@ -116,7 +117,7 @@ export const addMember = async (req: any, res: Response): Promise<void> => {
 
 export const createChat = async (req: any, res: Response): Promise<void> => {
   const userId = req.user.id;
-  const { name, description, avatar_url, is_group, memberIds } = req.body;
+  const { name, description, avatar_url, is_group, is_public, memberIds } = req.body;
   
   try {
     // If it's a DM, check if one already exists between the two users
@@ -140,8 +141,8 @@ export const createChat = async (req: any, res: Response): Promise<void> => {
     await query('BEGIN');
     
     const chatResult = await query(
-      'INSERT INTO chats (name, description, avatar_url, is_group) VALUES ($1, $2, $3, $4) RETURNING id',
-      [name, description, avatar_url, is_group]
+      'INSERT INTO chats (name, description, avatar_url, is_group, is_public) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [name, description, avatar_url, is_group, is_public ?? false]
     );
     const chatId = chatResult.rows[0].id;
 
