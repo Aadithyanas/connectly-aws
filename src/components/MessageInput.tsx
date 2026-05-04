@@ -13,7 +13,7 @@ interface ReplyingTo {
 }
 
 interface MessageInputProps {
-  onSendMessage: (content: string, mediaUrl?: string, mediaType?: string, replyTo?: string, mediaFile?: File) => Promise<any>
+  onSendMessage: (content: string, mediaUrl?: string, mediaType?: string, replyTo?: any, mediaFile?: File) => Promise<any>
   onTyping: (isTyping: boolean) => void
   onFileUpload: (file: File) => Promise<{ publicUrl?: string, mediaType?: string, error?: any }>
   replyingTo?: ReplyingTo | null
@@ -72,7 +72,7 @@ export default function MessageInput({ onSendMessage, onTyping, onFileUpload, re
     }
     setShowEmojiPicker(false)
     onTyping(false)
-    await onSendMessage(text, undefined, undefined, replyingTo?.id)
+    await onSendMessage(text, undefined, undefined, replyingTo || undefined)
     onCancelReply?.()
   }
 
@@ -82,7 +82,7 @@ export default function MessageInput({ onSendMessage, onTyping, onFileUpload, re
     
     // Send each file individually
     for (let i = 0; i < files.length; i++) {
-      onSendMessage('', undefined, undefined, replyingTo?.id, files[i])
+      onSendMessage('', undefined, undefined, replyingTo || undefined, files[i])
     }
     
     onCancelReply?.()
@@ -195,7 +195,7 @@ export default function MessageInput({ onSendMessage, onTyping, onFileUpload, re
         if (!discard) {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
           const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' })
-          onSendMessage('', undefined, 'audio', replyingTo?.id, audioFile)
+          onSendMessage('', undefined, 'audio', replyingTo || undefined, audioFile)
           onCancelReply?.()
         }
         audioChunksRef.current = []

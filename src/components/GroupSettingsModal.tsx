@@ -50,7 +50,7 @@ export default function GroupSettingsModal({ isOpen, onClose, chatId, onDetailsU
         setMembers((memberData as any[]).map((m: any) => ({
           user_id: m.id,
           role: m.role,
-          status: m.status || 'joined',
+          status: m.membership_status || 'joined',
           joined_at: m.joined_at,
           profiles: { name: m.name, avatar_url: m.avatar_url, role: m.job_role || m.role }
         })))
@@ -278,7 +278,7 @@ export default function GroupSettingsModal({ isOpen, onClose, chatId, onDetailsU
                       <span className="text-[10px] text-zinc-500 uppercase font-black">{member.profiles?.role}</span>
                     </div>
                     {isAdmin && member.user_id !== user?.id && (
-                      <button onClick={() => handleMemberAction(member.user_id, 'removed')} className="p-2 text-zinc-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><UserX className="w-4 h-4" /></button>
+                      <button onClick={() => handleMemberAction(member.user_id, 'removed')} className="p-2 text-zinc-600 hover:text-red-500 transition-colors"><UserX className="w-4 h-4" /></button>
                     )}
                   </div>
                 ))}

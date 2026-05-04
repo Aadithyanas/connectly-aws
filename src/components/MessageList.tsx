@@ -311,16 +311,26 @@ export default function MessageList({
     })
 
     return clusters.flatMap(cluster => {
-      if (cluster.length >= 5 && cluster.every(m => m.media_type === 'image' && !m.content)) {
-        return [{
-          ...cluster[cluster.length - 1],
-          is_album: true,
-          items: cluster,
-          id: cluster[cluster.length - 1].id,
-          client_id: cluster[0].client_id || cluster[0].id
-        }]
-      }
-      return cluster
+        if (cluster.length >= 5 && cluster.every((m: any) => m.media_type === 'image' && !m.content)) {
+          const albumKey = cluster.map((m: any) => m.id).join('+')
+          
+          let albumStatus = cluster[cluster.length - 1].status
+          if (cluster.some((m: any) => m.status === 'failed')) {
+            albumStatus = 'failed'
+          } else if (cluster.some((m: any) => m.status === 'sending')) {
+            albumStatus = 'sending'
+          }
+
+          return [{
+            ...cluster[cluster.length - 1],
+            status: albumStatus,
+            is_album: true,
+            items: cluster,
+            id: cluster[cluster.length - 1].id,
+            client_id: albumKey
+          }]
+        }
+        return cluster
     })
   }, [messages, currentUserId])
 
@@ -391,7 +401,7 @@ export default function MessageList({
               <Loader2 className="w-5 h-5 text-white/40 animate-spin" />
             </div>
           )}
-          {processedMessages.map((message) => {
+          {processedMessages.map((message, idx) => {
             const isOwn = !!currentUserId && message.sender_id === currentUserId
             const isHovered = hoveredId === message.id
             const swipeThreshold = 60
@@ -399,7 +409,7 @@ export default function MessageList({
 
           return (
             <motion.div
-              key={message.client_id || message.id}
+              key={`msg-${idx}-${message.id || message.client_id}`}
               layout
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -534,13 +544,15 @@ export default function MessageList({
                        {(() => {
                          if (!((message.media_url && !message.is_album) || message.is_album) || message.is_deleted_everyone) return null;
                          
-                         let effectiveMediaType = message.media_type;
-                         if (message.media_url && (effectiveMediaType === 'video' || effectiveMediaType === 'file')) {
-                           const url = message.media_url.toLowerCase();
-                           if (url.includes('.mp3') || url.includes('.wav') || url.includes('.webm') || url.includes('.ogg') || url.includes('.m4a')) {
-                             effectiveMediaType = 'audio';
-                           }
-                         }
+                        let effectiveMediaType = message.media_type;
+                        if (effectiveMediaType === 'raw') effectiveMediaType = 'file';
+                        
+                        if (message.media_url && (effectiveMediaType === 'video' || effectiveMediaType === 'file')) {
+                          const url = message.media_url.toLowerCase();
+                          if (url.includes('.mp3') || url.includes('.wav') || url.includes('.webm') || url.includes('.ogg') || url.includes('.m4a')) {
+                            effectiveMediaType = 'audio';
+                          }
+                        }
 
                          return (
                            <div className="mb-1">
@@ -742,15 +754,17 @@ export default function MessageList({
                                {format(new Date(message.created_at), 'h:mm a')}
                              </span>
                              {isOwn && (
-                               <div className="flex items-center">
+                               <div className="flex items-center ml-0.5">
                                  {message.status === 'sending' ? (
-                                   <Clock className="w-3 h-3 text-white/30 animate-pulse" />
+                                   <Clock className="w-3 h-3 text-white/25 animate-pulse" />
+                                 ) : message.status === 'failed' ? (
+                                   <X className="w-3.5 h-3.5 text-red-500" />
                                  ) : message.status === 'sent' ? (
-                                   <Check className="w-3.5 h-3.5 text-white/40" />
+                                   <Check className="w-3.5 h-3.5 text-white/35" strokeWidth={2.5} />
                                  ) : message.status === 'delivered' ? (
-                                   <CheckCheck className="w-4 h-4 text-white/50" />
+                                   <CheckCheck className="w-4 h-4 text-white/45" strokeWidth={2.5} />
                                  ) : (
-                                   <CheckCheck className="w-4 h-4 text-[#3b82f6]" />
+                                   <CheckCheck className="w-4 h-4 text-[#60a5fa]" strokeWidth={2.5} />
                                  )}
                                </div>
                              )}

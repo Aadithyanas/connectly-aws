@@ -10,7 +10,7 @@ async function getSocket() {
   if (typeof window === 'undefined') return null
   if (_io) return _io
   const { io } = await import('socket.io-client')
-  const url = process.env.NEXT_PUBLIC_SOCKET_URL || (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com')
+  const url = process.env.NEXT_PUBLIC_SOCKET_URL || (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api$/, '') : 'https://api.aadithyan.in')
   _io = io(url, { transports: ['websocket'], autoConnect: true })
   return _io
 }

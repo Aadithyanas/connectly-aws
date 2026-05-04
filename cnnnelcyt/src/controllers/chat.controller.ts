@@ -43,8 +43,9 @@ export const getChatById = async (req: any, res: Response): Promise<void> => {
           'id', p.id, 
           'name', p.name, 
           'avatar_url', p.avatar_url,
-          'role', p.role,
+          'role', cm2.role,
           'status', p.status,
+          'membership_status', cm2.status,
           'last_seen', p.last_seen
         )) FROM chat_members cm2 
            JOIN profiles p ON cm2.user_id = p.id 
@@ -147,13 +148,13 @@ export const createChat = async (req: any, res: Response): Promise<void> => {
     const chatId = chatResult.rows[0].id;
 
     // Add creator as admin
-    await query('INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3)', [chatId, userId, 'admin']);
+    await query('INSERT INTO chat_members (chat_id, user_id, role, status) VALUES ($1, $2, $3, $4)', [chatId, userId, 'admin', 'joined']);
 
     // Add other members
     if (memberIds && Array.isArray(memberIds)) {
       for (const id of memberIds) {
         if (id !== userId) {
-          await query('INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3)', [chatId, id, 'member']);
+          await query('INSERT INTO chat_members (chat_id, user_id, role, status) VALUES ($1, $2, $3, $4)', [chatId, id, 'member', 'joined']);
         }
       }
     }
@@ -190,8 +191,9 @@ export const getChats = async (req: any, res: Response): Promise<void> => {
           'id', p.id, 
           'name', p.name, 
           'avatar_url', p.avatar_url,
-          'role', p.role,
+          'role', cm2.role,
           'status', p.status,
+          'membership_status', cm2.status,
           'last_seen', p.last_seen
         )) FROM chat_members cm2 
            JOIN profiles p ON cm2.user_id = p.id 
@@ -218,7 +220,7 @@ export const getChatMembers = async (req: any, res: Response): Promise<void> => 
   try {
     const result = await query(
       `SELECT p.id, p.name, p.avatar_url, p.bio, p.job_role, p.college_name,
-              p.status, p.last_seen, cm.role, cm.joined_at 
+              p.status, cm.status as membership_status, p.last_seen, cm.role, cm.joined_at 
        FROM chat_members cm
        JOIN profiles p ON cm.user_id = p.id
        WHERE cm.chat_id = $1
@@ -237,10 +239,16 @@ export const removeMember = async (req: any, res: Response): Promise<void> => {
   const currentUserId = req.user.id;
   
   try {
-    // Only allow users to remove themselves, or admins to remove others (admin check not implemented yet)
+    // Only allow users to remove themselves, or admins to remove others
     if (userId !== currentUserId) {
-      res.status(403).json({ error: 'Not authorized' });
-      return;
+      const adminCheck = await query(
+        'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+        [id, currentUserId]
+      );
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+        res.status(403).json({ error: 'Not authorized' });
+        return;
+      }
     }
 
     await query('DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2', [id, userId]);
@@ -257,9 +265,16 @@ export const updateMemberStatus = async (req: any, res: Response): Promise<void>
   const currentUserId = req.user.id;
 
   try {
+    // Check if the current user is an admin or the user themselves
     if (userId !== currentUserId) {
-      res.status(403).json({ error: 'Not authorized' });
-      return;
+      const adminCheck = await query(
+        'SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+        [id, currentUserId]
+      );
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+        res.status(403).json({ error: 'Not authorized' });
+        return;
+      }
     }
 
     await query('UPDATE chat_members SET status = $1 WHERE chat_id = $2 AND user_id = $3', [status, id, userId]);

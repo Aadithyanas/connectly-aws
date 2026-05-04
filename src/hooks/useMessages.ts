@@ -17,7 +17,8 @@ function dedupMessages(msgs: any[]): any[] {
   for (const m of msgs) {
     const existing = map.get(m.id)
     if (!existing || isStatusForward(existing.status, m.status)) {
-      map.set(m.id, m)
+      // Merge to preserve rich optimistic fields (like 'reply' object) if the new update is missing them
+      map.set(m.id, existing ? { ...existing, ...m, reply: existing.reply || m.reply } : m)
     }
   }
   return Array.from(map.values()).sort(
@@ -38,7 +39,10 @@ function saveToCache(chatId: string, messages: any[]) {
 function loadFromCache(chatId: string): any[] {
   try {
     const raw = localStorage.getItem(CACHE_KEY(chatId))
-    return raw ? JSON.parse(raw) : []
+    if (!raw) return []
+    const parsed: any[] = JSON.parse(raw)
+    // Strip any stale optimistic/temp messages that might have slipped into older caches
+    return parsed.filter(m => typeof m.id === 'string' && !m.id.startsWith('temp-'))
   } catch (_) {
     return []
   }
@@ -47,14 +51,17 @@ function loadFromCache(chatId: string): any[] {
 export function useMessages(chatId?: string) {
   const [messages, setMessages] = useState<any[]>(() => {
     if (typeof window === 'undefined' || !chatId) return []
+    return loadFromCache(chatId)
+  })
+  // loading is only shown when there's no cached data yet for the chat
+  const [loading, setLoading] = useState(() => {
+    if (typeof window === 'undefined' || !chatId) return false
     try {
       const raw = localStorage.getItem(`chat_msgs_${chatId}`)
-      return raw ? JSON.parse(raw) : []
-    } catch (_) {
-      return []
-    }
+      const cached = raw ? JSON.parse(raw) : []
+      return !cached || cached.length === 0
+    } catch (_) { return true }
   })
-  const [loading, setLoading] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(true)
   const { user } = useAuth()
@@ -110,24 +117,25 @@ export function useMessages(chatId?: string) {
       return
     }
 
-    // 1. Refresh from cache immediately in case it changed elsewhere
+    // 1. Restore from cache immediately for instant display
     const cached = loadFromCache(chatId)
     if (cached.length > 0) {
-      setMessages(prev => {
-        // Only update if cache is different from current (to avoid unnecessary re-renders)
-        if (prev.length === 0) return cached
-        return prev
-      })
+      setMessages(prev => prev.length === 0 ? cached : prev)
+      // Cache hit: don't show loading spinner, fetch silently in background
+      setLoading(false)
     } else {
       setMessages([])
+      // No cache: show loading spinner until data arrives
+      setLoading(true)
     }
 
     offsetRef.current = 0
     setHasOlderMessages(true)
 
-    // 2. Fetch latest PAGE_SIZE messages from server in background
+    // 2. Silently fetch latest PAGE_SIZE messages from server in background
     const fetchMessages = async () => {
-      setLoading(true)
+      // Only set loading=true if no cached data exists
+      if (cached.length === 0) setLoading(true)
       try {
         const data = await api.get(`/messages/chat/${chatId}?limit=${PAGE_SIZE}&offset=0`)
         if (isMounted) {
@@ -139,7 +147,6 @@ export function useMessages(chatId?: string) {
           markAsSeen()
         }
       } catch (err) {
-        console.error('Failed to fetch messages', err)
       } finally {
         if (isMounted) setLoading(false)
       }
@@ -184,14 +191,29 @@ export function useMessages(chatId?: string) {
           : null
 
         if (existingById) {
-          return prev.map(m => m.id === payload.id ? { ...m, ...payload, status: isStatusForward(m.status, payload.status) ? payload.status : m.status } : m)
+          const updated = prev.map(m => m.id === payload.id
+            ? { ...m, ...payload, reply: m.reply || payload.reply, status: isStatusForward(m.status, payload.status) ? payload.status : m.status }
+            : m
+          )
+          if (chatId) saveToCache(chatId, updated)
+          return updated
         }
 
         if (existingByClientId) {
-          return prev.map(m => (m.client_id === payload.client_id || m.id === payload.client_id) ? payload : m)
+          // Merge: pick the highest status so we never downgrade (e.g. delivered → sent)
+          const bestStatus = isStatusForward(existingByClientId.status, payload.status)
+            ? payload.status
+            : existingByClientId.status
+          const updated = prev.map(m =>
+            (m.client_id === payload.client_id || m.id === payload.client_id)
+              ? { ...m, ...payload, reply: m.reply || payload.reply, status: bestStatus }
+              : m
+          )
+          if (chatId) saveToCache(chatId, updated)
+          return updated
         }
 
-        const next = [...prev, payload]
+        const next = dedupMessages([...prev, payload])
         // Update cache with new message
         if (chatId) saveToCache(chatId, next)
         return next
@@ -209,13 +231,16 @@ export function useMessages(chatId?: string) {
       const me = currentUserRef.current
       if (!me?.id || readerId === me.id) return
 
-      setMessages((prev) =>
-        prev.map((m) =>
+      setMessages((prev) => {
+        const updated = prev.map((m) =>
           m.sender_id === me.id && isStatusForward(m.status, status)
             ? { ...m, status }
             : m
         )
-      )
+        // Persist updated statuses to cache so ticks survive re-opens
+        if (chatId) saveToCache(chatId, updated)
+        return updated
+      })
     }
 
     socket.on('new_message', handleNewMessage)
@@ -231,6 +256,33 @@ export function useMessages(chatId?: string) {
       socket.emit('leave_chat', chatId)
     }
   }, [chatId, markAsSeen, markAsDelivered, mergeServerMessages])
+
+  // ── Status poll fallback ─────────────────────────────────────────────────
+  // If the backend socket relay for 'chat_read' doesn't reach the sender,
+  // we poll the server every 8 s while there are messages stuck at 'sent'.
+  // The server always has the authoritative status, so this guarantees ticks
+  // upgrade to delivered / seen even when the socket event is missed.
+  const messagesRef = useRef(messages)
+  useEffect(() => { messagesRef.current = messages }, [messages])
+
+  useEffect(() => {
+    if (!chatId || !user?.id) return
+
+    const hasSentMessages = () =>
+      messagesRef.current.some(m => m.status === 'sent' && m.sender_id === user.id)
+
+    const pollStatus = async () => {
+      if (!hasSentMessages()) return
+      try {
+        const data = await api.get(`/messages/chat/${chatId}?limit=${PAGE_SIZE}&offset=0`)
+        if (data && data.length > 0) mergeServerMessages(data)
+      } catch (_) {}
+    }
+
+    // Poll every 8 s — stops naturally when no 'sent' messages remain
+    const interval = setInterval(pollStatus, 8000)
+    return () => clearInterval(interval)
+  }, [chatId, user?.id, mergeServerMessages])
 
   // Called when user scrolls to the TOP — loads older messages
   const loadOlderMessages = useCallback(async () => {
@@ -273,7 +325,7 @@ export function useMessages(chatId?: string) {
       finalMediaType = type === 'image' || type === 'video' || type === 'audio' ? type : 'file'
     }
 
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}-${Math.random().toString(36).substring(2, 7)}`
     const msgData: any = {
       id: tempId,
       client_id: tempId,
@@ -289,7 +341,16 @@ export function useMessages(chatId?: string) {
          avatar_url: user.avatar_url
       }
     }
-    if (replyTo) msgData.reply_to = replyTo
+    if (replyTo) {
+      msgData.reply_to = typeof replyTo === 'string' ? replyTo : replyTo.id
+      if (typeof replyTo === 'object') {
+        msgData.reply = {
+          id: replyTo.id,
+          content: replyTo.content,
+          sender_id: replyTo.sender_id
+        }
+      }
+    }
 
     // Guard: never add the same temp message twice
     setMessages((prev) => {
@@ -313,14 +374,20 @@ export function useMessages(chatId?: string) {
         content,
         media_url: finalMediaUrl,
         media_type: finalMediaType,
-        reply_to: replyTo,
+        reply_to: typeof replyTo === 'string' ? replyTo : replyTo?.id,
         client_id: tempId
       })
 
       const data = result
       if (data && data.id) {
         setMessages((prev) => {
-          const next = prev.map(m => m.id === tempId ? { ...data, status: 'sent', sender: msgData.sender } : m)
+          const next = prev.map(m => {
+            if (m.id === tempId) {
+              const bestStatus = isStatusForward(m.status, 'sent') ? 'sent' : m.status
+              return { ...m, ...data, reply: m.reply || data.reply, status: bestStatus, sender: msgData.sender }
+            }
+            return m
+          })
           if (chatId) saveToCache(chatId, next)
           return next
         })
@@ -361,12 +428,19 @@ export function useMessages(chatId?: string) {
     }
   }
 
-  const uploadFile = async (file: File) => {
-    const isVideo = file.type.startsWith('video/')
-    const isAudio = file.type.startsWith('audio/')
-    const resourceType = (isVideo || isAudio) ? 'video' : (file.type.startsWith('image/') ? 'image' : 'raw')
+  const uploadQueue = useRef<Array<{ file: File, resolve: (val: any) => void }>>([])
+  const isUploading = useRef(false)
 
+  const processUploadQueue = async () => {
+    if (isUploading.current || uploadQueue.current.length === 0) return
+    isUploading.current = true
+    
+    const { file, resolve } = uploadQueue.current.shift()!
     try {
+      const isVideo = file.type.startsWith('video/')
+      const isAudio = file.type.startsWith('audio/')
+      const resourceType = (isVideo || isAudio) ? 'video' : (file.type.startsWith('image/') ? 'image' : 'raw')
+
       const signRes = await fetch('/api/cloudinary/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -391,10 +465,23 @@ export function useMessages(chatId?: string) {
         throw new Error(uploadData.error?.message || 'Cloudinary upload failed')
       }
 
-      return { publicUrl: uploadData.secure_url, mediaType: resourceType }
+      resolve({ 
+        publicUrl: uploadData.secure_url, 
+        mediaType: resourceType === 'raw' ? 'file' : resourceType 
+      })
     } catch (err: any) {
-      return { error: err.message }
+      resolve({ error: err.message })
     }
+    
+    isUploading.current = false
+    processUploadQueue()
+  }
+
+  const uploadFile = (file: File): Promise<any> => {
+    return new Promise((resolve) => {
+      uploadQueue.current.push({ file, resolve })
+      processUploadQueue()
+    })
   }
 
   return {

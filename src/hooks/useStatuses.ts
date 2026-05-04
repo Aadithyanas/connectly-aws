@@ -69,8 +69,10 @@ export function useStatuses() {
         localStorage.setItem(`my_statuses_${user.id}`, JSON.stringify(mine))
         localStorage.setItem(`partner_statuses_${user.id}`, JSON.stringify(othersGrouped))
       }
-    } catch (error) {
-      console.error('Error fetching statuses:', error)
+    } catch (error: any) {
+      if (error?.message !== 'Failed to fetch') {
+        console.error('Error fetching statuses:', error)
+      }
     } finally {
       setLoading(false)
     }

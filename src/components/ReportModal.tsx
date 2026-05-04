@@ -37,7 +37,7 @@ export default function ReportModal({ reportedUserId, reportedUserName, onClose 
     try {
       // Submit report via custom backend (no Supabase)
       const token = localStorage.getItem('token')
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'https://craft-accordingly-ave-details.trycloudflare.com'
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api$/, '') : 'https://api.aadithyan.in'
       await fetch(`${baseUrl}/api/reports`, {
         method: 'POST',
         headers: {

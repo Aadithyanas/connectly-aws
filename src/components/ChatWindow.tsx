@@ -119,7 +119,6 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
 
       // 2. Fetch fresh chat details from our custom backend
       try {
-        console.log(`[ChatWindow] Fetching chat details for ${chatId}...`)
         const chat = await api.get(`/chats/${chatId}`)
 
         if (chat) {
@@ -132,7 +131,7 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
             
             // Find the current user's role instead of hardcoding 'member'
             const me = members.find((m: any) => m.id === user.id)
-            const membership = me ? { role: me.role, status: me.status } : { role: 'member', status: 'joined' }
+            const membership = me ? { role: me.role, status: me.membership_status || 'joined' } : { role: 'member', status: 'joined' }
             setMyMembership(membership)
             localStorage.setItem(`membership_${chatId}`, JSON.stringify(membership))
           } else {
@@ -182,8 +181,8 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
 
     fetchProfileState()
 
-    // Poll profile every 30s as a fallback
-    const statusPoll = setInterval(() => fetchProfileState(), 30000)
+    // Poll profile every 60s as a fallback
+    const statusPoll = setInterval(() => fetchProfileState(), 60000)
 
     // Socket: real-time presence updates for this user
     const socket = socketService.getSocket()

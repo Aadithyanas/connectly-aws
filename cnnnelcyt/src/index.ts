@@ -28,6 +28,7 @@ import connectionRoutes from './routes/connection.routes';
 import pushSubscriptionRoutes from './routes/push-subscriptions.routes';
 import reportRoutes from './routes/reports.routes';
 import challengeRoutes from './routes/challenges.routes';
+import jobRoutes from './routes/job.routes';
 
 // Enable CORS
 app.use(cors({
@@ -61,6 +62,7 @@ app.use('/api/connections', connectionRoutes);
 app.use('/api/push-subscriptions', pushSubscriptionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/challenges', challengeRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

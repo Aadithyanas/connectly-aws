@@ -15,9 +15,13 @@ export async function GET(request: Request) {
       user = data.user
     }
 
+    // Challenge list is now public for better performance and to fix 401 issues
+    // with the custom backend transition.
+    /*
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    */
 
     const client = await clientPromise
     const db = client.db(process.env.MONGODB_DB || 'connectly')

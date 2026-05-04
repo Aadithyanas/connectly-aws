@@ -51,11 +51,13 @@ async function makeRequest(endpoint: string, options: RequestInit) {
     const text = await response.text();
     if (!text) return null;
     return JSON.parse(text);
-    } catch (error) {
-      console.error('API Request failed:', error);
-      // Log more details about the error if possible
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
+    } catch (error: any) {
+      // Suppress 'Failed to fetch' noisy logs which happen on network blips/polling
+      if (error?.message !== 'Failed to fetch') {
+        console.error('API Request failed:', error);
+        if (error instanceof Error) {
+          console.error('Error message:', error.message);
+        }
       }
       throw error;
     }

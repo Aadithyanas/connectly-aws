@@ -10,6 +10,7 @@ import DiscoveryFeed from '@/components/DiscoveryFeed'
 import StatusTab from '@/components/StatusTab'
 import StatusViewer from '@/components/StatusViewer'
 import ChallengesRoom from '@/components/ChallengesRoom'
+import JobSection from '@/components/jobs/JobSection'
 import { useStatuses, Status } from '@/hooks/useStatuses'
 import { api } from '@/utils/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
@@ -32,7 +33,7 @@ export default function ChatPage() {
   const [sidebarType, setSidebarType] = useState<'profile' | 'contact' | 'group'>('profile')
   const [sidebarData, setSidebarData] = useState<any>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState<'chat' | 'feed' | 'initiative' | 'challenges' | 'groups'>('feed')
+  const [activeTab, setActiveTab] = useState<'chat' | 'feed' | 'initiative' | 'challenges' | 'groups' | 'jobs'>('feed')
   const [feedFilterUserId, setFeedFilterUserId] = useState<string | undefined>(undefined)
   const [activeStatuses, setActiveStatuses] = useState<Status[] | null>(null)
   const [isNavVisible, setIsNavVisible] = useState(true)
@@ -239,7 +240,7 @@ export default function ChatPage() {
           activeTab={activeTab}
           isModalOpen={isNewChatModalOpen}
           onTabChange={(tab) => {
-            const tabs = ['feed', 'chat', 'groups', 'initiative', 'challenges']
+            const tabs = ['feed', 'chat', 'groups', 'initiative', 'jobs', 'challenges']
             const index = tabs.indexOf(tab)
             if (index !== -1 && scrollContainerRef.current) {
               isInternalScrollRef.current = true
@@ -286,7 +287,7 @@ export default function ChatPage() {
             activeTab="chat"
             isModalOpen={isNewChatModalOpen}
             onTabChange={(tab) => {
-              const tabs = ['feed', 'chat', 'groups', 'initiative', 'challenges']
+              const tabs = ['feed', 'chat', 'groups', 'initiative', 'jobs', 'challenges']
               const index = tabs.indexOf(tab)
               if (index !== -1 && scrollContainerRef.current) {
                 isInternalScrollRef.current = true
@@ -311,7 +312,7 @@ export default function ChatPage() {
             activeTab="groups"
             isModalOpen={isNewChatModalOpen}
             onTabChange={(tab) => {
-              const tabs = ['feed', 'chat', 'groups', 'initiative', 'challenges']
+              const tabs = ['feed', 'chat', 'groups', 'initiative', 'jobs', 'challenges']
               const index = tabs.indexOf(tab)
               if (index !== -1 && scrollContainerRef.current) {
                 isInternalScrollRef.current = true
@@ -330,7 +331,12 @@ export default function ChatPage() {
           <StatusTab onStatusClick={setActiveStatuses} onBack={() => {}} />
         </div>
 
-        {/* Page 4: Challenges (Arena) */}
+        {/* Page 4: Jobs Section */}
+        <div data-tab="jobs" className="min-w-full h-full snap-start snap-always flex flex-col">
+          <JobSection />
+        </div>
+
+        {/* Page 5: Challenges (Arena) */}
         <div data-tab="challenges" className="min-w-full h-full snap-start snap-always flex flex-col">
           <ChallengesRoom onSessionChange={setIsArenaActive} />
         </div>
@@ -441,6 +447,26 @@ export default function ChatPage() {
               setTimeout(() => {
                 if (scrollContainerRef.current) {
                   scrollContainerRef.current.scrollTo({ left: scrollContainerRef.current.offsetWidth * 4, behavior: 'smooth' })
+                }
+                setActiveTab('jobs')
+              }, 10)
+            }}
+            className={`relative flex items-center justify-center w-12 h-12 transition-all duration-200 rounded-2xl ${
+              activeTab === 'jobs' ? 'text-[#bc9dff]' : 'text-[#767575] hover:text-[#adaaaa]'
+            }`}
+          >
+            {activeTab === 'jobs' && <div className="absolute bottom-[6px] w-1 h-1 rounded-full bg-[#bc9dff]" />}
+            <Briefcase className="w-[20px] h-[20px]" />
+          </button>
+
+          <button 
+            onClick={() => {
+              isInternalScrollRef.current = true
+              setActiveChatSession(null)
+              setIsInfoSidebarOpen(false)
+              setTimeout(() => {
+                if (scrollContainerRef.current) {
+                  scrollContainerRef.current.scrollTo({ left: scrollContainerRef.current.offsetWidth * 5, behavior: 'smooth' })
                 }
                 setActiveTab('challenges')
               }, 10)

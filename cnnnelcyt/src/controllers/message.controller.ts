@@ -20,6 +20,20 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
       [userId]
     );
     msg.sender = profileResult.rows[0] || null;
+    
+    // Attach reply info if this is a reply
+    if (msg.reply_to) {
+      const replyResult = await query(
+        `SELECT m.content, p.name as "senderName", m.sender_id
+         FROM messages m
+         JOIN profiles p ON m.sender_id = p.id
+         WHERE m.id = $1`,
+        [msg.reply_to]
+      );
+      if (replyResult.rows.length > 0) {
+        msg.reply = replyResult.rows[0];
+      }
+    }
 
     // Server-side broadcast — ensures delivery even if client socket emit fails
     const io = getIO();
@@ -44,9 +58,19 @@ export const getMessages = async (req: any, res: Response): Promise<void> => {
     const result = await query(
       `SELECT * FROM (
         SELECT m.*,
-                json_build_object('name', p.name, 'avatar_url', p.avatar_url) as sender
+                json_build_object('name', p.name, 'avatar_url', p.avatar_url) as sender,
+                CASE WHEN m.reply_to IS NOT NULL THEN 
+                  json_build_object(
+                    'id', rm.id,
+                    'content', rm.content,
+                    'sender_id', rm.sender_id,
+                    'senderName', rp.name
+                  )
+                ELSE NULL END as reply
         FROM messages m
         JOIN profiles p ON m.sender_id = p.id
+        LEFT JOIN messages rm ON m.reply_to = rm.id
+        LEFT JOIN profiles rp ON rm.sender_id = rp.id
         WHERE m.chat_id = $1
         ORDER BY m.created_at DESC
         LIMIT $2 OFFSET $3
@@ -105,16 +129,35 @@ export const deleteMessage = async (req: any, res: Response): Promise<void> => {
 export const markAllDelivered = async (req: any, res: Response): Promise<void> => {
   const userId = req.user.id;
   try {
-    await query(
+    // Update DB and return which chats were affected so we can emit per-chat
+    const result = await query(
       `UPDATE messages
        SET status = 'delivered'
        WHERE status = 'sent'
          AND chat_id IN (
            SELECT chat_id FROM chat_members WHERE user_id = $1
          )
-         AND sender_id != $1`,
+         AND sender_id != $1
+       RETURNING chat_id`,
       [userId]
     );
+
+    // Emit chat_read 'delivered' to each affected chat room so senders see double-tick in real-time
+    if (result.rows.length > 0) {
+      const io = getIO();
+      if (io) {
+        // Deduplicate chat IDs
+        const chatIds = [...new Set(result.rows.map((r: any) => r.chat_id))];
+        chatIds.forEach((chatId: any) => {
+          io.to(`chat:${chatId}`).emit('chat_read', {
+            chatId,
+            readerId: userId,
+            status: 'delivered'
+          });
+        });
+      }
+    }
+
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('[markAllDelivered]', error);

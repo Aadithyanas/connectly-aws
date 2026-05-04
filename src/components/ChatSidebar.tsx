@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { api } from '@/utils/api'
 import { socketService } from '@/utils/socket'
 
-import { Search, UserCircle, Home, Plus, Compass, CircleDashed, Trophy, Users, Globe } from 'lucide-react'
+import { Search, UserCircle, Home, Plus, Compass, CircleDashed, Trophy, Users, Globe, Briefcase } from 'lucide-react'
 import Image from 'next/image'
 import { isUserOnline } from '@/hooks/useOnlineStatus'
 
@@ -28,8 +28,8 @@ interface ChatSidebarProps {
   onOpenNewChat: () => void
   onOpenProfile: () => void
   onOpenSettings: () => void
-  activeTab: 'chat' | 'feed' | 'initiative' | 'challenges' | 'groups'
-  onTabChange: (tab: 'chat' | 'feed' | 'initiative' | 'challenges' | 'groups') => void
+  activeTab: 'chat' | 'feed' | 'initiative' | 'challenges' | 'groups' | 'jobs'
+  onTabChange: (tab: 'chat' | 'feed' | 'initiative' | 'challenges' | 'groups' | 'jobs') => void
   isModalOpen?: boolean
 }
 
@@ -66,9 +66,8 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
     // Only show skeleton on first load, not on background refreshes
     if (showSkeleton) setLoading(true)
     try {
-      console.log('[ChatSidebar] Fetching chats from backend...')
       const chatData = await api.get('/chats')
-      console.log('[ChatSidebar] Chats received:', chatData?.length)
+
 
       if (!chatData || !Array.isArray(chatData)) {
         setChats([])
@@ -239,15 +238,48 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
     }
   }, [])
 
-  // Real-time unread badge: increment when a message arrives in a non-active chat
+  const joinedRoomsRef = useRef<Set<string>>(new Set())
+  const chatsRef = useRef<any[] | null>(null)
+  const activeChatIdRef = useRef<string | undefined>(undefined)
+  const markDeliveredTimer = useRef<NodeJS.Timeout | null>(null)
+
+  // Keep refs in sync without causing re-registrations
+  useEffect(() => { chatsRef.current = chats }, [chats])
+  useEffect(() => { activeChatIdRef.current = activeChatId }, [activeChatId])
+
+  // Join new chat rooms whenever chats list changes (separate from the message handler)
+  useEffect(() => {
+    if (!user?.id || !chats || chats.length === 0) return
+    const socket = socketService.getSocket()
+    chats.forEach(c => {
+      if (!joinedRoomsRef.current.has(c.id)) {
+        socket.emit('join_chat', c.id)
+        joinedRoomsRef.current.add(c.id)
+      }
+    })
+  }, [user?.id, chats])
+
+  // Real-time unread badge — registered ONCE, uses refs to avoid re-registration
   useEffect(() => {
     if (!user?.id) return
     const socket = socketService.getSocket()
+
     const handleNewMessage = (payload: any) => {
       const incomingChatId = payload.chat_id || payload.chatId
       if (!incomingChatId) return
-      // If message is from someone else and not in the active chat — increment badge
-      if (payload.sender_id !== user.id && incomingChatId !== activeChatId) {
+
+      // If the message is from someone else, acknowledge delivery immediately
+      if (payload.sender_id !== user.id) {
+        socket.emit('chat_read', { chatId: incomingChatId, readerId: user.id, status: 'delivered' })
+        // Debounced mark-delivered: batch multiple rapid messages into one API call
+        if (markDeliveredTimer.current) clearTimeout(markDeliveredTimer.current)
+        markDeliveredTimer.current = setTimeout(() => {
+          api.post('/messages/mark-delivered', {}).catch(() => {})
+        }, 1500)
+      }
+
+      // Increment unread badge for non-active chats
+      if (payload.sender_id !== user.id && incomingChatId !== activeChatIdRef.current) {
         setChats(prev => (prev || []).map(c =>
           c.id === incomingChatId
             ? {
@@ -261,8 +293,11 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
       }
     }
     socket.on('new_message', handleNewMessage)
-    return () => { socket.off('new_message', handleNewMessage) }
-  }, [user?.id, activeChatId])
+    return () => {
+      socket.off('new_message', handleNewMessage)
+      if (markDeliveredTimer.current) clearTimeout(markDeliveredTimer.current)
+    }
+  }, [user?.id])
 
   // Clear unread count when a chat is opened
   useEffect(() => {
@@ -326,10 +361,10 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
-    // Clock only - don't clone chats array every second
+    // Clock — update every 60s (minute precision is enough for the header)
     const clockInterval = setInterval(() => {
       setCurrentTime(new Date())
-    }, 1000)
+    }, 60000)
 
 
     // Add storage event listener to refresh nicknames if changed in other tabs/components
@@ -369,7 +404,7 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
     window.location.href = '/login'
   }
 
-  const filteredChats = chats ? chats.filter((c: any) => {
+  const filteredChats = useMemo(() => chats ? chats.filter((c: any) => {
     const matchesSearch = (c.display_name?.toLowerCase() || '').includes(search.toLowerCase()) ||
                          (c.display_email?.toLowerCase() || '').includes(search.toLowerCase())
     
@@ -377,10 +412,10 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
     if (activeTab === 'groups' && groupSubTab === 'my') return matchesSearch && c.is_group
     
     return false // Community tab handled separately
-  }) : []
+  }) : [], [chats, search, activeTab, groupSubTab])
 
   // Deduplicate DMs to ensure only the most recent chat with the same user is shown
-  const deduplicatedChats = filteredChats.reduce((acc: any[], current: any) => {
+  const deduplicatedChats = useMemo(() => filteredChats.reduce((acc: any[], current: any) => {
     if (current.is_group) {
       acc.push(current)
       return acc
@@ -403,7 +438,7 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
       }
     }
     return acc
-  }, [])
+  }, []), [filteredChats])
 
   const textSizeClass = settings.textSize === 'small' ? 'text-sm' : settings.textSize === 'large' ? 'text-lg' : 'text-base'
   const rawAvatarSrc = authProfile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
@@ -500,6 +535,13 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
                 title="Initiatives"
               >
                 <CircleDashed className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => onTabChange('jobs')}
+                className={`p-2 rounded-full transition-all duration-300 ${activeTab === 'jobs' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/10'}`}
+                title="Job Opportunities"
+              >
+                <Briefcase className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => onTabChange('challenges')}
