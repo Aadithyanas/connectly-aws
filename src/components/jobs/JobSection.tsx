@@ -7,6 +7,7 @@ import { api } from '@/utils/api'
 import { socketService } from '@/utils/socket'
 import JobCard, { Job } from './JobCard'
 import PostJobModal from './PostJobModal'
+import JobDetailsModal from './JobDetailsModal'
 import { useAuth } from '@/context/AuthContext'
 
 export default function JobSection() {
@@ -14,6 +15,7 @@ export default function JobSection() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [isPostModalOpen, setIsPostModalOpen] = useState(false)
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   
   // Filters
   const [search, setSearch] = useState('')
@@ -161,7 +163,7 @@ export default function JobSection() {
         ) : jobs.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 max-w-2xl mx-auto pb-24">
             {jobs.map(job => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} onClick={setSelectedJob} />
             ))}
           </div>
         ) : (
@@ -191,6 +193,11 @@ export default function JobSection() {
         isOpen={isPostModalOpen} 
         onClose={() => setIsPostModalOpen(false)} 
         onJobCreated={fetchJobs} 
+      />
+
+      <JobDetailsModal 
+        job={selectedJob} 
+        onClose={() => setSelectedJob(null)} 
       />
     </div>
   )

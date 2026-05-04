@@ -19,10 +19,12 @@ export interface Job {
 
 interface JobCardProps {
   job: Job
+  onClick?: (job: Job) => void
 }
 
-export default function JobCard({ job }: JobCardProps) {
-  const handleApply = () => {
+export default function JobCard({ job, onClick }: JobCardProps) {
+  const handleApply = (e: React.MouseEvent) => {
+    e.stopPropagation()
     window.open(job.apply_link, '_blank', 'noopener,noreferrer')
   }
 
@@ -35,7 +37,8 @@ export default function JobCard({ job }: JobCardProps) {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group relative p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] hover:border-[#bc9dff]/30 transition-all duration-300"
+      onClick={() => onClick?.(job)}
+      className="group relative p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] hover:border-[#bc9dff]/30 transition-all duration-300 cursor-pointer"
     >
       <div className="flex items-start gap-4">
         {/* Company Logo Placeholder */}
