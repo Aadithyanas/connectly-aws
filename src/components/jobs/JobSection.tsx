@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { Search, MapPin, Building2, Plus, Briefcase, Filter, X, ArrowLeft } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/utils/api'
+import { socketService } from '@/utils/socket'
 import JobCard, { Job } from './JobCard'
 import PostJobModal from './PostJobModal'
 import { useAuth } from '@/context/AuthContext'
@@ -39,6 +40,16 @@ export default function JobSection() {
 
   useEffect(() => {
     fetchJobs()
+
+    // Listen for real-time job updates
+    const socket = socketService.getSocket()
+    socket.on('new_job', (newJob: Job) => {
+      setJobs(prev => [newJob, ...prev])
+    })
+
+    return () => {
+      socket.off('new_job')
+    }
   }, [search, location, company])
 
   const clearFilters = () => {

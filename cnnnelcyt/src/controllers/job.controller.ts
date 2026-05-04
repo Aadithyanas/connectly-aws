@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
+import { getIO } from '../socket';
 
 // GET /api/jobs
 export const getJobs = async (req: Request, res: Response): Promise<void> => {
@@ -67,6 +68,12 @@ export const createJob = async (req: any, res: Response): Promise<void> => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [userId, title, company_name, company_logo, location, job_type, description, apply_link, salary_range]
     );
+    
+    // Broadcast real-time update
+    const io = getIO();
+    if (io) {
+      io.emit('new_job', result.rows[0]);
+    }
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
