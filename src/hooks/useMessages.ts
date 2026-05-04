@@ -313,7 +313,7 @@ export function useMessages(chatId?: string) {
     }
   }, [chatId, loadingOlder, hasOlderMessages])
 
-  const sendMessage = async (content: string, mediaUrl?: string, mediaType?: string, replyTo?: string, mediaFile?: File, recipientId?: string) => {
+  const sendMessage = async (content: string, mediaUrl?: string, mediaType?: string, replyTo?: any, mediaFile?: File, recipientId?: string) => {
     if (!user || !chatId) return
 
     let finalMediaUrl = mediaUrl
@@ -342,8 +342,9 @@ export function useMessages(chatId?: string) {
       }
     }
     if (replyTo) {
-      msgData.reply_to = typeof replyTo === 'string' ? replyTo : replyTo.id
-      if (typeof replyTo === 'object') {
+      const isObject = typeof replyTo === 'object' && replyTo !== null
+      msgData.reply_to = isObject ? replyTo.id : replyTo
+      if (isObject) {
         msgData.reply = {
           id: replyTo.id,
           content: replyTo.content,
@@ -374,7 +375,7 @@ export function useMessages(chatId?: string) {
         content,
         media_url: finalMediaUrl,
         media_type: finalMediaType,
-        reply_to: typeof replyTo === 'string' ? replyTo : replyTo?.id,
+        reply_to: (typeof replyTo === 'object' && replyTo !== null) ? replyTo.id : replyTo,
         client_id: tempId
       })
 
