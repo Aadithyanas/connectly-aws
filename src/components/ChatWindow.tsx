@@ -281,7 +281,8 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
     initiateCall(
       isGroup ? chatId : otherUser?.id, 
       type, 
-      isGroup
+      isGroup,
+      headerDisplay.name
     );
     
     if (!isDirect) {

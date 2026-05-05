@@ -13,7 +13,7 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
 
     // RULE: Group calls are ALWAYS direct (No request needed)
     if (isGroup) {
-      socket.to(to).emit('call:group-incoming', {
+      socket.to(`chat:${to}`).emit('call:group-incoming', {
         roomId: to,
         caller: callerInfo,
         type: data.type
@@ -21,17 +21,9 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       return;
     }
 
-    // Check Receiver Role (In a real app, you'd fetch this from DB/Cache)
-    // For now, we expect the client to send the target's role for the permission check
-    // or we assume the client knows if a request is needed.
-    
-    // LOGIC:
-    // Prof -> Student: Direct
-    // Others: Request
-    
-    // We'll emit an event back to the caller to tell them if they are "Ringing" or "Requesting"
-    socket.to(to).emit('call:request', {
-      from: socket.id, // Using socket.id for signaling, but usually user ID
+    // Emit to the target user's presence room
+    socket.to(`presence:${to}`).emit('call:request', {
+      from: socket.id, 
       caller: callerInfo,
       type: data.type
     });

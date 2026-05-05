@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { socketService } from '@/utils/socket';
-const socket = socketService.getSocket();
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 
@@ -10,7 +9,7 @@ interface CallContextType {
   isRinging: boolean;
   isCalling: boolean;
   activeCall: any | null;
-  initiateCall: (to: string, type: 'audio' | 'video', isGroup?: boolean) => void;
+  initiateCall: (to: string, type: 'audio' | 'video', isGroup?: boolean, targetName?: string) => void;
   acceptCall: () => void;
   rejectCall: () => void;
   endCall: () => void;
@@ -22,29 +21,29 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const [isRinging, setIsRinging] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
   const [activeCall, setActiveCall] = useState<any | null>(null);
+  const [socket, setSocket] = useState<any>(null);
+  
   const localStream = useRef<MediaStream | null>(null);
   const remoteStream = useRef<MediaStream | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const { user } = useAuth();
 
+  // Safe Socket Initialization (SSR Safe)
   useEffect(() => {
-    if (!socket) return;
+    const s = socketService.getSocket();
+    setSocket(s);
 
-    // Listen for incoming call requests
-    socket.on('call:request', (data: any) => {
-      setActiveCall(data);
-      setIsRinging(true);
-      // Play ringtone logic here
-    });
-
-    // Listen for direct incoming calls
-    socket.on('call:incoming', (data: any) => {
+    s.on('call:request', (data: any) => {
       setActiveCall(data);
       setIsRinging(true);
     });
 
-    // Listen for request response
-    socket.on('call:request-result', (data: { accepted: boolean }) => {
+    s.on('call:group-incoming', (data: any) => {
+      setActiveCall(data);
+      setIsRinging(true);
+    });
+
+    s.on('call:request-result', (data: { accepted: boolean }) => {
       if (data.accepted) {
         toast.success('Call request accepted!');
         startSignaling();
@@ -55,27 +54,28 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // Listen for signaling
-    socket.on('call:signal', async (data: any) => {
-      if (!peerConnection.current) return;
-      // Handle WebRTC signaling here...
-    });
-
-    socket.on('call:end', () => {
+    s.on('call:end', () => {
       handleEndCall();
     });
 
     return () => {
-      socket.off('call:request');
-      socket.off('call:incoming');
-      socket.off('call:request-result');
-      socket.off('call:signal');
-      socket.off('call:end');
+      s.off('call:request');
+      s.off('call:group-incoming');
+      s.off('call:request-result');
+      s.off('call:end');
     };
   }, []);
 
-  const initiateCall = (to: string, type: 'audio' | 'video', isGroup = false) => {
+  const initiateCall = (to: string, type: 'audio' | 'video', isGroup = false, targetName = 'User') => {
+    if (!socket) return;
+    
     setIsCalling(true);
+    // Set active call info for the CALLER so UI shows the correct name
+    setActiveCall({
+      caller: { name: targetName },
+      type
+    });
+
     socket.emit('call:initiate', {
       to,
       type,
@@ -88,19 +88,21 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const acceptCall = () => {
+    if (!socket || !activeCall) return;
     setIsRinging(false);
     socket.emit('call:request-response', { to: activeCall.from, accepted: true });
     startSignaling();
   };
 
   const rejectCall = () => {
+    if (!socket || !activeCall) return;
     setIsRinging(false);
     socket.emit('call:request-response', { to: activeCall.from, accepted: false });
     setActiveCall(null);
   };
 
   const startSignaling = () => {
-    // WebRTC initialization logic...
+    // Signaling logic...
   };
 
   const handleEndCall = () => {
@@ -112,11 +114,12 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     }
     if (peerConnection.current) {
       peerConnection.current.close();
+      peerConnection.current = null;
     }
   };
 
   const endCall = () => {
-    if (activeCall) {
+    if (socket && activeCall) {
       socket.emit('call:end', { to: activeCall.from });
     }
     handleEndCall();

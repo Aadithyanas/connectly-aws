@@ -28,9 +28,11 @@ export const CallOverlay = () => {
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold">{activeCall?.caller?.name || 'Incoming Call'}</h3>
+              <h3 className="text-lg font-semibold">
+                {isRinging ? 'Incoming Call' : (activeCall?.caller?.name || 'Calling...')}
+              </h3>
               <p className="text-xs text-gray-400 uppercase tracking-widest mt-1">
-                {isRinging ? 'Requesting Audio Call...' : 'Calling...'}
+                {isRinging ? (activeCall?.caller?.name || 'Unknown') : 'CALLING...'}
               </p>
             </div>
 
