@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { socket } from '@/lib/socket'; // Assuming you have a socket instance exported
+import { socketService } from '@/utils/socket';
+const socket = socketService.getSocket();
 import { toast } from 'sonner';
 
 interface CallContextType {
