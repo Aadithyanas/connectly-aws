@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
+import { sendPushNotification } from '../utils/push';
 import { getIO } from '../socket';
 
 export const sendMessage = async (req: any, res: Response): Promise<void> => {
@@ -40,6 +41,16 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
     if (io) {
       // Broadcast to all in the room
       io.to(`chat:${chat_id}`).emit('new_message', { ...msg, status: 'sent' });
+    }
+
+    // Notify recipient via Push Notification if it's a direct message
+    if (!isGroup && receiverId) {
+      sendPushNotification(receiverId, {
+        title: 'New Message',
+        body: content ? `${msg.sender.name}: ${content.substring(0, 50)}...` : `${msg.sender.name} sent a media file`,
+        type: 'message',
+        url: `/chat/${chat_id}`
+      }).catch(err => console.error('[Push] error:', err));
     }
 
     res.status(201).json(msg);

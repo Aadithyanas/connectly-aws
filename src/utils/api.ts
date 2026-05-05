@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://craft-accordingly-ave-details.trycloudflare.com/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.aadithyan.in/api';
 
 export const api = {
   get: async (endpoint: string) => {

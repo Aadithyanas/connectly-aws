@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import { sendPushNotification } from '../utils/push';
 
 export const setupCallHandlers = (io: Server, socket: Socket) => {
   
@@ -30,6 +31,15 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       caller: callerInfo,
       type: data.type
     });
+
+    // Send Web Push Notification for incoming call (wakes up phone/service worker)
+    sendPushNotification(to, {
+      title: 'Incoming Call',
+      body: `${callerInfo.name} is video calling you`,
+      type: 'call',
+      caller: callerInfo,
+      url: '/calls'
+    }).catch(err => console.error('[Call] Push error:', err));
   });
 
   // 2. RESPOND TO REQUEST (Accept/Reject)
