@@ -133,6 +133,22 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
       formattedChats.sort((a: any, b: any) => (b.last_msg_time || '').localeCompare(a.last_msg_time || ''))
       
       setChats(formattedChats)
+
+      // Seed online status from fresh API data
+      const freshOnlineIds = new Set<string>()
+      formattedChats.forEach((c: any) => {
+        if (c.other_profile && c.other_profile.status === 'online') {
+          freshOnlineIds.add(c.other_profile.id)
+        }
+      })
+      if (freshOnlineIds.size > 0) {
+        setOnlineUserIds(prev => {
+          const merged = new Set(prev)
+          freshOnlineIds.forEach(id => merged.add(id))
+          return merged
+        })
+      }
+
       if (user?.id) {
         localStorage.setItem(`chats_${user.id}`, JSON.stringify(formattedChats))
       }
