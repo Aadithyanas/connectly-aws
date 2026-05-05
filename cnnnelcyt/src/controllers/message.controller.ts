@@ -43,11 +43,15 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
       io.to(`chat:${chat_id}`).emit('new_message', { ...msg, status: 'sent' });
     }
 
-    // Notify recipient via Push Notification if it's a direct message
-    if (!isGroup && receiverId) {
-      sendPushNotification(receiverId, {
-        title: 'New Message',
-        body: content ? `${msg.sender.name}: ${content.substring(0, 50)}...` : `${msg.sender.name} sent a media file`,
+    // Notify all other members in the chat via Push Notification
+    const membersResult = await query(
+      `SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id != $2`,
+      [chat_id, userId]
+    );
+    for (const row of membersResult.rows) {
+      sendPushNotification(row.user_id, {
+        title: msg.sender.name || 'New Message',
+        body: content ? content.substring(0, 50) + (content.length > 50 ? '...' : '') : 'Sent a media file',
         type: 'message',
         url: `/chat/${chat_id}`
       }).catch(err => console.error('[Push] error:', err));
