@@ -68,9 +68,11 @@ export default function JobDetailsModal({ job, onClose }: JobDetailsModalProps) 
                     <div className="flex items-center gap-2">
                       {job.source_platform && (
                         <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                          job.source_platform === 'Connectly' 
-                            ? 'bg-[#bc9dff]/10 text-[#bc9dff]' 
-                            : 'bg-emerald-500/10 text-emerald-400'
+                          job.source_platform === 'Connectly' ? 'bg-[#bc9dff]/10 text-[#bc9dff]' :
+                          job.source_platform === 'LinkedIn' ? 'bg-[#0077b5]/10 text-[#0077b5]' :
+                          job.source_platform === 'Indeed' ? 'bg-[#2164f3]/10 text-[#2164f3]' :
+                          job.source_platform === 'Glassdoor' ? 'bg-[#0caa41]/10 text-[#0caa41]' :
+                          'bg-emerald-500/10 text-emerald-400'
                         }`}>
                           {job.source_platform}
                         </span>

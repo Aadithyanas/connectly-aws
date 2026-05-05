@@ -38,17 +38,30 @@ export const fetchExternalJobs = async (query: string = '', location: string = '
 
     const data = await response.json();
     
-    return data.results.map((job: any) => ({
-      id: `ext-${job.id}`,
-      title: job.title,
-      company_name: job.company.display_name,
-      location: job.location.display_name,
-      description: job.description.replace(/<[^>]*>?/gm, ''),
-      apply_link: job.redirect_url,
-      job_type: job.contract_type || 'Full Time',
-      source_platform: 'Adzuna', // We can parse the site from job.redirect_url if needed
-      created_at: job.created
-    }));
+    return data.results.map((job: any) => {
+      const url = job.redirect_url.toLowerCase();
+      let platform = 'External';
+      
+      if (url.includes('linkedin')) platform = 'LinkedIn';
+      else if (url.includes('glassdoor')) platform = 'Glassdoor';
+      else if (url.includes('indeed')) platform = 'Indeed';
+      else if (url.includes('simplyhired')) platform = 'SimplyHired';
+      else if (url.includes('monster')) platform = 'Monster';
+      else if (url.includes('ziprecruiter')) platform = 'ZipRecruiter';
+      else if (url.includes('naukri')) platform = 'Naukri';
+      
+      return {
+        id: `ext-${job.id}`,
+        title: job.title,
+        company_name: job.company.display_name,
+        location: job.location.display_name,
+        description: job.description.replace(/<[^>]*>?/gm, ''),
+        apply_link: job.redirect_url,
+        job_type: job.contract_type || 'Full Time',
+        source_platform: platform,
+        created_at: job.created
+      };
+    });
   } catch (error) {
     console.error('[JobService] Error fetching external jobs:', error);
     return [];
