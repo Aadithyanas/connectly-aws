@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/utils/api'
 import { useAuth } from '@/context/AuthContext'
 
@@ -8,55 +8,70 @@ const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
 export function usePushNotifications() {
   const { user } = useAuth()
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Check initial state
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      return
-    }
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    navigator.serviceWorker.ready.then(reg => {
+      reg.pushManager.getSubscription().then(sub => {
+        setIsSubscribed(!!sub)
+      })
+    })
+  }, [])
 
-    const subscribeUser = async () => {
-      try {
-        const registration = await navigator.serviceWorker.register('/sw.js')
-        
-        // Wait for service worker to be ready
-        await navigator.serviceWorker.ready
+  const subscribeToPush = async () => {
+    try {
+      setError(null)
+      if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        throw new Error('Push notifications are not supported in this browser.')
+      }
 
-        const permission = await Notification.requestPermission()
-        if (permission !== 'granted') return
+      const registration = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
 
-        let subscription = await registration.pushManager.getSubscription()
-        
-        if (!subscription) {
-          if (!VAPID_PUBLIC_KEY) {
-            console.warn('[PushNotifications] VAPID public key not set — skipping push subscription.')
-            return
-          }
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        throw new Error('Permission denied. Please enable notifications in your browser settings.')
+      }
 
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-          })
+      let subscription = await registration.pushManager.getSubscription()
+      
+      if (!subscription) {
+        if (!VAPID_PUBLIC_KEY) {
+          throw new Error('VAPID public key not set in environment.')
         }
 
-        if (!user) return
-
-        // Save subscription via our own API (not Supabase)
-        const subJson = subscription.toJSON()
-        if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) return
-
-        await api.post('/push-subscriptions', {
-          endpoint: subJson.endpoint,
-          p256dh: subJson.keys.p256dh,
-          auth: subJson.keys.auth
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         })
-
-      } catch (error) {
-        console.error('[PushNotifications] Error during push subscription:', error)
       }
-    }
 
-    subscribeUser()
-  }, [user])
+      if (!user) return false
+
+      const subJson = subscription.toJSON()
+      if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+        throw new Error('Failed to generate subscription keys.')
+      }
+
+      await api.post('/push-subscriptions', {
+        endpoint: subJson.endpoint,
+        p256dh: subJson.keys.p256dh,
+        auth: subJson.keys.auth
+      })
+
+      setIsSubscribed(true)
+      return true
+    } catch (err: any) {
+      console.error('[PushNotifications] Error:', err)
+      setError(err.message || 'Failed to subscribe to push notifications')
+      return false
+    }
+  }
+
+  return { isSubscribed, subscribeToPush, error }
 }
 
 function urlBase64ToUint8Array(base64String: string) {

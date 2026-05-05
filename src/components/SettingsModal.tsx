@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Type, Loader2, AlertTriangle } from 'lucide-react'
+import { X, Type, Loader2, AlertTriangle, Bell, BellRing } from 'lucide-react'
 import { useSettings, AppSettings } from '@/hooks/useSettings'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import ReportModal from './ReportModal'
 
 interface SettingsModalProps {
@@ -17,6 +18,9 @@ export default function SettingsModal({ type, onClose, otherUserId, otherUserNam
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings)
   const [isSaving, setIsSaving] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
+
+  const { isSubscribed, subscribeToPush, error: pushError } = usePushNotifications()
+  const [isPushLoading, setIsPushLoading] = useState(false)
 
   useEffect(() => {
     if (isLoaded) setLocalSettings(settings)
@@ -79,6 +83,45 @@ export default function SettingsModal({ type, onClose, otherUserId, otherUserNam
 
         <div className="p-6 flex flex-col gap-8 flex-1 overflow-y-auto custom-scrollbar">
           {renderTextSize()}
+
+          {type === 'sidebar' && (
+            <div className="pt-4 border-t border-white/[0.04]">
+              <p className="text-xs text-zinc-600 mb-3 font-bold uppercase tracking-wider">Notifications</p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={async () => {
+                    setIsPushLoading(true)
+                    await subscribeToPush()
+                    setIsPushLoading(false)
+                  }}
+                  disabled={isSubscribed || isPushLoading}
+                  className={`w-full flex items-center justify-between p-4 border rounded-xl group transition-all ${
+                    isSubscribed 
+                      ? 'bg-green-500/[0.06] border-green-500/10 cursor-default' 
+                      : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.04] cursor-pointer'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {isSubscribed ? <BellRing className="w-5 h-5 text-green-400" /> : <Bell className="w-5 h-5 text-zinc-400" />}
+                    <div className="text-left">
+                      <p className={`text-sm font-bold ${isSubscribed ? 'text-green-400' : 'text-zinc-200'}`}>
+                        {isSubscribed ? 'Notifications Enabled' : 'Enable Call & Chat Notifications'}
+                      </p>
+                      <p className="text-zinc-500 text-[11px]">
+                        {isSubscribed ? 'Your device will ring for incoming calls.' : 'Allow the browser to ring for incoming calls.'}
+                      </p>
+                    </div>
+                  </div>
+                  {!isSubscribed && (
+                    <div className="px-3 py-1 bg-white text-black text-xs font-bold rounded-full">
+                      {isPushLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Enable'}
+                    </div>
+                  )}
+                </button>
+                {pushError && <p className="text-red-400 text-xs mt-1 px-1">{pushError}</p>}
+              </div>
+            </div>
+          )}
 
           {type === 'chat' && otherUserId && (
              <div className="pt-4 border-t border-white/[0.04]">
