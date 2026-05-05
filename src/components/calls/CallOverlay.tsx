@@ -89,13 +89,52 @@ export const CallOverlay = () => {
 
   // ── Ringtone and System Notification for Incoming Calls ─────────────────────
   useEffect(() => {
-    let audio: HTMLAudioElement | null = null;
+    let audioCtx: AudioContext | null = null;
+    let ringInterval: ReturnType<typeof setInterval> | null = null;
+    let isPlaying = false;
     
     if (isRinging && activeCall?.isIncoming) {
-      // 1. Play ringing sound
-      audio = new Audio('/ringtone.mp3'); // We'll assume a generic path or it falls back to silent if missing
-      audio.loop = true;
-      audio.play().catch(() => console.warn('Autoplay blocked for ringtone'));
+      // 1. Synthesize Ringing Sound (No MP3 required)
+      const playRing = () => {
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+          
+          const osc1 = audioCtx.createOscillator();
+          const osc2 = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          osc1.frequency.setValueAtTime(440, audioCtx.currentTime); // Standard UK/Euro ring tone freq 1
+          osc2.frequency.setValueAtTime(480, audioCtx.currentTime); // Standard UK/Euro ring tone freq 2
+          
+          osc1.connect(gainNode);
+          osc2.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+          // First ring (0.4s)
+          gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+          gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime + 0.4);
+          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.45);
+          // Second ring (0.4s)
+          gainNode.gain.setValueAtTime(0, audioCtx.currentTime + 0.6);
+          gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.65);
+          gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime + 1.0);
+          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.05);
+          
+          osc1.start(audioCtx.currentTime);
+          osc2.start(audioCtx.currentTime);
+          osc1.stop(audioCtx.currentTime + 1.1);
+          osc2.stop(audioCtx.currentTime + 1.1);
+        } catch (e) { console.warn('AudioContext blocked', e); }
+      };
+
+      // Play immediately, then repeat every 3 seconds
+      playRing();
+      ringInterval = setInterval(playRing, 3000);
+      isPlaying = true;
 
       // 2. Show System Notification if backgrounded
       if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
@@ -114,9 +153,9 @@ export const CallOverlay = () => {
     }
 
     return () => {
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
+      if (ringInterval) clearInterval(ringInterval);
+      if (audioCtx && isPlaying) {
+        audioCtx.close().catch(() => {});
       }
     };
   }, [isRinging, activeCall]);
