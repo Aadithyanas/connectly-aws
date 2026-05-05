@@ -47,7 +47,7 @@ export const getJobs = async (req: Request, res: Response): Promise<void> => {
     // 2. Fetch External Jobs (Only if on the first page/offset 0 to avoid duplicates or overload)
     let externalJobs: any[] = [];
     if (offsetNum === 0) {
-      externalJobs = await fetchExternalJobs(title as string, location as string);
+      externalJobs = await fetchExternalJobs(title as string, location as string, limitNum);
     }
 
     // 3. Merge and Sort

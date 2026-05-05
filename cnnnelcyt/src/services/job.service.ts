@@ -18,17 +18,18 @@ export interface ExternalJob {
   created_at: string;
 }
 
-export const fetchExternalJobs = async (query: string = '', location: string = ''): Promise<ExternalJob[]> => {
+export const fetchExternalJobs = async (query: string = '', location: string = '', limit: number = 50): Promise<ExternalJob[]> => {
   if (!ADZUNA_APP_ID || !ADZUNA_APP_KEY) {
     console.warn('[JobService] Adzuna API keys not set. Skipping external jobs.');
     return [];
   }
 
   try {
-    const what = query || 'developer';
+    // If both are empty, search for 'jobs' as a generic fallback
+    const what = query || (location ? '' : 'jobs');
     const where = location || '';
     
-    const url = `https://api.adzuna.com/v1/api/jobs/${ADZUNA_COUNTRY}/search/1?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_APP_KEY}&results_per_page=10&what=${encodeURIComponent(what)}&where=${encodeURIComponent(where)}`;
+    const url = `https://api.adzuna.com/v1/api/jobs/${ADZUNA_COUNTRY}/search/1?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_APP_KEY}&results_per_page=${limit}&what=${encodeURIComponent(what)}&where=${encodeURIComponent(where)}`;
     
     const response = await fetch(url);
     if (!response.ok) {
