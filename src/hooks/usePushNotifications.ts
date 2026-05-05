@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/utils/api'
 import { useAuth } from '@/context/AuthContext'
+import { toast } from 'react-hot-toast'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
@@ -63,10 +64,13 @@ export function usePushNotifications() {
       })
 
       setIsSubscribed(true)
+      toast.success('Notifications enabled successfully!')
       return true
     } catch (err: any) {
       console.error('[PushNotifications] Error:', err)
-      setError(err.message || 'Failed to subscribe to push notifications')
+      const msg = err.message || 'Failed to subscribe'
+      setError(msg)
+      toast.error(msg)
       return false
     }
   }
