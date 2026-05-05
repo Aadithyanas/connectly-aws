@@ -46,7 +46,7 @@ export function usePushNotifications() {
             subscription = null
           }
         } catch {
-          await subscription.unsubscribe()
+          if (subscription) await subscription.unsubscribe()
           subscription = null
         }
       }
