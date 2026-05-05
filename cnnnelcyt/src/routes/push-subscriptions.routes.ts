@@ -10,7 +10,10 @@ router.post('/', authenticateToken, async (req: any, res) => {
   const userId = req.user.id;
   const { endpoint, p256dh, auth } = req.body;
 
+  console.log(`[push-subscriptions] Received subscription request for user: ${userId}`);
+
   if (!endpoint || !p256dh || !auth) {
+    console.warn(`[push-subscriptions] Missing fields for user: ${userId}`);
     res.status(400).json({ error: 'Missing required subscription fields' });
     return;
   }
@@ -23,6 +26,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
        DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
       [userId, endpoint, p256dh, auth]
     );
+    console.log(`[push-subscriptions] Successfully saved subscription for user: ${userId}`);
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('[push-subscriptions]', error);
