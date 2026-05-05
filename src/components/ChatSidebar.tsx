@@ -750,8 +750,8 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
                         </div>
                       )}
                     </div>
-                    {chat.other_profile && (isUserOnline(chat.other_profile) || onlineUserIds.has(chat.other_profile.id)) && chat.other_profile?.availability_status !== false && (
-                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#bc9dff] rounded-full border-2 border-[#0e0e0e] shadow-[0_0_6px_rgba(188,157,255,0.6)]"></div>
+                    {chat.other_profile && !chat.is_group && (onlineUserIds.has(chat.other_profile.id) || chat.other_profile.status === 'online') && chat.other_profile?.availability_status !== false && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#22c55e] rounded-full border-2 border-[#0e0e0e] shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
                     )}
                   </div>
 

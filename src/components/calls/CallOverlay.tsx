@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Maximize2, Minimize2, User } from 'lucide-react';
 import { useCall } from '@/context/CallContext';
@@ -18,19 +18,48 @@ export const CallOverlay = () => {
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
-  // Attach streams to video elements
+  // Attach local stream to video element
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
 
+  // Attach remote stream to both video AND audio elements
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
+      // Always attach to audio element for reliable audio playback
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
     }
   }, [remoteStream]);
+
+  // Toggle mute — actually disable audio tracks
+  const toggleMute = useCallback(() => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = isMuted; // toggle: if currently muted, enable
+      });
+    }
+    setIsMuted(!isMuted);
+  }, [localStream, isMuted]);
+
+  // Toggle video — actually disable video tracks
+  const toggleVideo = useCallback(() => {
+    if (localStream) {
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = isVideoOff; // toggle: if currently off, enable
+      });
+    }
+    setIsVideoOff(!isVideoOff);
+  }, [localStream, isVideoOff]);
 
   // Call Timer
   useEffect(() => {
@@ -45,6 +74,15 @@ export const CallOverlay = () => {
     return () => clearInterval(interval);
   }, [activeCall, isRinging, isCalling]);
 
+  // Reset mute/video state when call ends
+  useEffect(() => {
+    if (!activeCall) {
+      setIsMuted(false);
+      setIsVideoOff(false);
+      setIsMinimized(false);
+    }
+  }, [activeCall]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -58,6 +96,9 @@ export const CallOverlay = () => {
 
   return (
     <AnimatePresence>
+      {/* Hidden audio element — always plays remote audio regardless of video state */}
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+      
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ 
@@ -135,8 +176,8 @@ export const CallOverlay = () => {
                       <div className="absolute -inset-4 border-2 border-[#bc9dff]/30 rounded-full animate-ping" />
                     )}
                     {isActive && (
-                      <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#bc9dff] text-black text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg">
-                        Live
+                      <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#22c55e] text-white text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg">
+                        Connected
                       </div>
                     )}
                   </div>
@@ -146,7 +187,7 @@ export const CallOverlay = () => {
                   </h3>
                   
                   <p className="text-xs text-[#bc9dff] font-medium tracking-widest uppercase">
-                    {isRinging ? 'Incoming Request' : isCalling ? 'Calling...' : formatTime(callTime)}
+                    {isRinging ? 'Incoming Call' : isCalling ? 'Calling...' : formatTime(callTime)}
                   </p>
                 </div>
               )}
@@ -182,7 +223,7 @@ export const CallOverlay = () => {
               ) : (
                 <>
                   <button
-                    onClick={() => setIsMuted(!isMuted)}
+                    onClick={toggleMute}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}
                   >
                     {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -196,7 +237,7 @@ export const CallOverlay = () => {
                   </button>
 
                   <button
-                    onClick={() => setIsVideoOff(!isVideoOff)}
+                    onClick={toggleVideo}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isVideoOff ? 'bg-red-500 text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}
                   >
                     {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
