@@ -77,7 +77,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       autoGainControl: true,
       sampleRate: 48000,
       channelCount: 1,      // mono = lower latency
-      latency: 0,           // request minimum buffer latency
+      // latency: 0, // removed to fix TS error, not standard in all browsers
     };
     if (!isVideo) return { audio: audioConstraints, video: false };
     return {
