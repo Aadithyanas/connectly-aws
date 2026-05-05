@@ -164,7 +164,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       } else if (pc.connectionState === 'failed') {
         clearIceRecovery();
         toast.error('Call connection failed');
-        handleEndCall();
+        endCall(); // Notify other side before local cleanup
       }
     };
 
@@ -180,30 +180,13 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
           const state = peerConnection.current?.iceConnectionState;
           if (state === 'disconnected' || state === 'failed') {
             toast.error('Call connection lost');
-            handleEndCall();
+            endCall(); // Notify other side
           }
         }, 8000);
-        // Trigger ICE restart immediately
-        try { peerConnection.current?.restartIce(); } catch (_) {}
       } else if (pc.iceConnectionState === 'failed') {
         clearIceRecovery();
         toast.error('Call connection failed');
-        handleEndCall();
-      }
-    };
-
-    // ── Re-negotiate only when in stable state (avoids double-offer on track add) ──
-    pc.onnegotiationneeded = async () => {
-      const currentCall = activeCallRef.current;
-      // Only re-negotiate if stable (not during initial offer/answer exchange)
-      if (!currentCall?.isIncoming && peerConnection.current === pc && pc.signalingState === 'stable') {
-        try {
-          const offer = await pc.createOffer({ iceRestart: true });
-          await pc.setLocalDescription(offer);
-          if (socket && currentCall?.targetSocketId) {
-            socket.emit('call:signal', { to: currentCall.targetSocketId, signal: offer });
-          }
-        } catch (e) { console.warn('[Call] Re-negotiation failed:', e); }
+        endCall(); // Notify other side
       }
     };
 
