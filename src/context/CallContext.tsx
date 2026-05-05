@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { socketService } from '@/utils/socket';
 const socket = socketService.getSocket();
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 interface CallContextType {
   isRinging: boolean;
@@ -24,6 +25,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const localStream = useRef<MediaStream | null>(null);
   const remoteStream = useRef<MediaStream | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!socket) return;
@@ -74,12 +76,14 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
 
   const initiateCall = (to: string, type: 'audio' | 'video', isGroup = false) => {
     setIsCalling(true);
-    // Note: In real logic, we'd check roles here to decide if it's a request or direct
     socket.emit('call:initiate', {
       to,
       type,
       isGroup,
-      callerInfo: { name: 'You', role: 'student' } // Placeholder
+      callerInfo: { 
+        name: user?.user_metadata?.full_name || user?.email || 'Someone', 
+        role: user?.user_metadata?.role || 'student' 
+      }
     });
   };
 
