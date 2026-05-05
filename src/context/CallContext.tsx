@@ -34,6 +34,10 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const hasRemoteDesc = useRef(false);
   // Timer to allow ICE 'disconnected' to recover before giving up
   const iceRecoveryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pre-acquired media stream for callee (acquired during acceptCall)
+  const pendingMediaStream = useRef<MediaStream | null>(null);
+  // Track if we've already attempted ICE restart to avoid infinite loops
+  const hasAttemptedRestart = useRef(false);
 
   const { user } = useAuth();
 
@@ -78,7 +82,6 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       autoGainControl: true,
       sampleRate: 48000,
       channelCount: 1,      // mono = lower latency
-      // latency: 0, // removed to fix TS error, not standard in all browsers
     };
     if (!isVideo) return { audio: audioConstraints, video: false };
     return {
@@ -111,6 +114,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const handleEndCall = useCallback(() => {
     clearIceRecovery();
     hasRemoteDesc.current = false;
+    hasAttemptedRestart.current = false;
     iceCandidateQueue.current = [];
     setIsRinging(false);
     setIsCalling(false);
@@ -119,12 +123,20 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       if (prev) prev.getTracks().forEach(t => t.stop());
       return null;
     });
+    // Also stop any pending media stream
+    if (pendingMediaStream.current) {
+      pendingMediaStream.current.getTracks().forEach(t => t.stop());
+      pendingMediaStream.current = null;
+    }
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
     }
     setRemoteStream(null);
   }, []);
+
+  // Ref-based endCall so PC callbacks always have the latest version
+  const endCallRef = useRef<() => void>(() => {});
 
   // ─── Drain queued ICE candidates after remote description is applied ───────
   const drainQueue = useCallback(async () => {
@@ -141,6 +153,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const createPeerConnection = useCallback((targetSocketId: string) => {
     if (peerConnection.current) peerConnection.current.close();
     hasRemoteDesc.current = false;
+    hasAttemptedRestart.current = false;
     iceCandidateQueue.current = [];
 
     const socket = socketService.getSocket();
@@ -162,10 +175,38 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('[Call] Connection state:', pc.connectionState);
       if (pc.connectionState === 'connected') {
         clearIceRecovery();
+        hasAttemptedRestart.current = false;
       } else if (pc.connectionState === 'failed') {
         clearIceRecovery();
-        toast.error('Call connection failed');
-        endCall(); // Notify other side before local cleanup
+        // Try ICE restart once before giving up
+        if (!hasAttemptedRestart.current && peerConnection.current) {
+          hasAttemptedRestart.current = true;
+          console.log('[Call] Connection failed, attempting ICE restart...');
+          toast.info('Reconnecting...');
+          try {
+            peerConnection.current.restartIce();
+          } catch (e) {
+            console.error('[Call] ICE restart failed:', e);
+            toast.error('Call connection failed');
+            // Use ref-based endCall to avoid stale closure
+            const socket = socketService.getSocket();
+            const c = activeCallRef.current;
+            if (socket && c) {
+              const target = c.from || c.targetSocketId;
+              if (target) socket.emit('call:end', { to: target });
+            }
+            handleEndCall();
+          }
+        } else {
+          toast.error('Call connection failed');
+          const socket = socketService.getSocket();
+          const c = activeCallRef.current;
+          if (socket && c) {
+            const target = c.from || c.targetSocketId;
+            if (target) socket.emit('call:end', { to: target });
+          }
+          handleEndCall();
+        }
       }
     };
 
@@ -174,20 +215,48 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('[Call] ICE state:', pc.iceConnectionState);
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         clearIceRecovery();
+        hasAttemptedRestart.current = false;
       } else if (pc.iceConnectionState === 'disconnected') {
         // Give it 12 s to self-heal (NAT rebind, mobile handoff, etc.)
         clearIceRecovery();
         iceRecoveryTimer.current = setTimeout(() => {
           const state = peerConnection.current?.iceConnectionState;
           if (state === 'disconnected' || state === 'failed') {
-            toast.error('Call connection lost');
-            endCall(); // Notify other side
+            // Try ICE restart before giving up
+            if (!hasAttemptedRestart.current && peerConnection.current) {
+              hasAttemptedRestart.current = true;
+              console.log('[Call] ICE disconnected timeout, attempting restart...');
+              toast.info('Reconnecting...');
+              try { peerConnection.current.restartIce(); } catch (e) { /* ignore */ }
+            } else {
+              toast.error('Call connection lost');
+              const socket = socketService.getSocket();
+              const c = activeCallRef.current;
+              if (socket && c) {
+                const target = c.from || c.targetSocketId;
+                if (target) socket.emit('call:end', { to: target });
+              }
+              handleEndCall();
+            }
           }
         }, 12000);
       } else if (pc.iceConnectionState === 'failed') {
         clearIceRecovery();
-        toast.error('Call connection failed');
-        endCall(); // Notify other side
+        if (!hasAttemptedRestart.current && peerConnection.current) {
+          hasAttemptedRestart.current = true;
+          console.log('[Call] ICE failed, attempting restart...');
+          toast.info('Reconnecting...');
+          try { peerConnection.current.restartIce(); } catch (e) { /* ignore */ }
+        } else {
+          toast.error('Call connection failed');
+          const socket = socketService.getSocket();
+          const c = activeCallRef.current;
+          if (socket && c) {
+            const target = c.from || c.targetSocketId;
+            if (target) socket.emit('call:end', { to: target });
+          }
+          handleEndCall();
+        }
       }
     };
 
@@ -230,8 +299,15 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       const isVideo = activeCallRef.current?.type === 'video';
       console.log('[Call] Handling offer from', fromSocketId, 'isVideo:', isVideo);
 
-      // 1. Get media BEFORE creating PC — ensures video m-line in answer
-      const stream = await getMediaWithFallback(isVideo);
+      // 1. Use pre-acquired media if available (from acceptCall), else get fresh
+      let stream: MediaStream;
+      if (pendingMediaStream.current) {
+        stream = pendingMediaStream.current;
+        pendingMediaStream.current = null;
+        console.log('[Call] Using pre-acquired media stream');
+      } else {
+        stream = await getMediaWithFallback(isVideo);
+      }
       setLocalStream(stream);
 
       // 2. Create PC and set remote description
@@ -367,11 +443,23 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [user]);
 
-  const acceptCall = useCallback(() => {
+  const acceptCall = useCallback(async () => {
     const socket = socketService.getSocket();
     const c = activeCallRef.current;
     if (!socket || !c) return;
     setIsRinging(false);
+
+    // Pre-acquire media while waiting for the caller's offer
+    // This eliminates the delay of getUserMedia during handleOffer
+    try {
+      const isVideo = c.type === 'video';
+      console.log('[Call] Pre-acquiring media on accept, isVideo:', isVideo);
+      const stream = await getMediaWithFallback(isVideo);
+      pendingMediaStream.current = stream;
+    } catch (err) {
+      console.warn('[Call] Pre-acquire media failed, will retry in handleOffer:', err);
+    }
+
     socket.emit('call:request-response', { to: c.from, accepted: true });
   }, []);
 
@@ -393,6 +481,11 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     }
     handleEndCall();
   }, [handleEndCall]);
+
+  // Keep endCallRef in sync
+  useEffect(() => {
+    endCallRef.current = endCall;
+  }, [endCall]);
 
   return (
     <CallContext.Provider value={{

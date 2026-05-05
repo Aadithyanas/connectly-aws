@@ -1,5 +1,9 @@
 import { Server, Socket } from 'socket.io';
 import { sendPushNotification } from '../utils/push';
+import { query } from '../db';
+
+// Track active call pairs: socketId -> partnerSocketId
+const activeCallPairs = new Map<string, string>();
 
 export const setupCallHandlers = (io: Server, socket: Socket) => {
   
@@ -21,6 +25,25 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
         caller: callerInfo,
         type: data.type
       });
+
+      // Send push notifications to all group members
+      try {
+        const membersResult = await query(
+          'SELECT user_id FROM chat_members WHERE chat_id = $1',
+          [to]
+        );
+        for (const row of membersResult.rows) {
+          sendPushNotification(row.user_id, {
+            title: 'Group Call',
+            body: `${callerInfo.name} started a group ${data.type} call`,
+            type: 'call',
+            caller: callerInfo,
+            url: '/chat'
+          }).catch(err => console.error('[Call] Group push error:', err));
+        }
+      } catch (err) {
+        console.error('[Call] Error sending group push notifications:', err);
+      }
       return;
     }
 
@@ -35,16 +58,23 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
     // Send Web Push Notification for incoming call (wakes up phone/service worker)
     sendPushNotification(to, {
       title: 'Incoming Call',
-      body: `${callerInfo.name} is video calling you`,
+      body: `${callerInfo.name} is ${data.type === 'video' ? 'video' : ''} calling you`,
       type: 'call',
       caller: callerInfo,
-      url: '/calls'
+      url: '/chat'
     }).catch(err => console.error('[Call] Push error:', err));
   });
 
   // 2. RESPOND TO REQUEST (Accept/Reject)
   socket.on('call:request-response', (data: { to: string, accepted: boolean }) => {
     console.log(`[Call] Request response from ${socket.id} to ${data.to}: ${data.accepted ? 'ACCEPTED' : 'REJECTED'}`);
+    
+    if (data.accepted) {
+      // Track the call pair
+      activeCallPairs.set(socket.id, data.to);
+      activeCallPairs.set(data.to, socket.id);
+    }
+    
     socket.to(data.to).emit('call:request-result', {
       accepted: data.accepted,
       from: socket.id
@@ -53,7 +83,6 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
 
   // 3. WEBRTC SIGNALING (The actual data transfer)
   socket.on('call:signal', (data: { to: string, signal: any }) => {
-    // console.log(`[Call] Signaling from ${socket.id} to ${data.to}`);
     socket.to(data.to).emit('call:signal', {
       from: socket.id,
       signal: data.signal
@@ -64,10 +93,20 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
   socket.on('call:end', (data: { to: string }) => {
     console.log(`[Call] End from ${socket.id} to ${data.to}`);
     socket.to(data.to).emit('call:end');
+    
+    // Clean up call pair tracking
+    activeCallPairs.delete(socket.id);
+    activeCallPairs.delete(data.to);
   });
 
   socket.on('disconnect', () => {
-    // Notify anyone in an active call with this user
-    socket.broadcast.emit('call:user-disconnected', socket.id);
+    // Only notify the call partner, not all users
+    const partnerId = activeCallPairs.get(socket.id);
+    if (partnerId) {
+      console.log(`[Call] User ${socket.id} disconnected, notifying partner ${partnerId}`);
+      io.to(partnerId).emit('call:user-disconnected', socket.id);
+      activeCallPairs.delete(socket.id);
+      activeCallPairs.delete(partnerId);
+    }
   });
 };

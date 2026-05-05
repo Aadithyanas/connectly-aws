@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/utils/api'
 import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
@@ -12,36 +12,49 @@ export function usePushNotifications() {
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Check initial state
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
-    navigator.serviceWorker.ready.then(reg => {
-      reg.pushManager.getSubscription().then(sub => {
-        setIsSubscribed(!!sub)
-      })
-    })
-  }, [])
-
-  const subscribeToPush = async () => {
+  const subscribeToPush = useCallback(async (silent = false) => {
     try {
       setError(null)
       if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-        throw new Error('Push notifications are not supported in this browser.')
+        if (!silent) throw new Error('Push notifications are not supported in this browser.')
+        return false
       }
 
       const registration = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') {
-        throw new Error('Permission denied. Please enable notifications in your browser settings.')
+      // If silent mode, only proceed if permission is already granted
+      if (silent) {
+        const currentPermission = Notification.permission
+        if (currentPermission !== 'granted') return false
+      } else {
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+          throw new Error('Permission denied. Please enable notifications in your browser settings.')
+        }
       }
 
       let subscription = await registration.pushManager.getSubscription()
       
+      // If existing subscription was created with wrong VAPID key, unsubscribe and re-create
+      if (subscription) {
+        try {
+          // Test if the existing subscription is valid by checking its key
+          const subJson = subscription.toJSON()
+          if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+            await subscription.unsubscribe()
+            subscription = null
+          }
+        } catch {
+          await subscription.unsubscribe()
+          subscription = null
+        }
+      }
+
       if (!subscription) {
         if (!VAPID_PUBLIC_KEY) {
-          throw new Error('VAPID public key not set in environment.')
+          if (!silent) throw new Error('VAPID public key not set in environment.')
+          return false
         }
 
         subscription = await registration.pushManager.subscribe({
@@ -54,7 +67,8 @@ export function usePushNotifications() {
 
       const subJson = subscription.toJSON()
       if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
-        throw new Error('Failed to generate subscription keys.')
+        if (!silent) throw new Error('Failed to generate subscription keys.')
+        return false
       }
 
       await api.post('/push-subscriptions', {
@@ -64,16 +78,42 @@ export function usePushNotifications() {
       })
 
       setIsSubscribed(true)
-      toast.success('Notifications enabled successfully!')
+      if (!silent) toast.success('Notifications enabled successfully!')
       return true
     } catch (err: any) {
       console.error('[PushNotifications] Error:', err)
       const msg = err.message || 'Failed to subscribe'
       setError(msg)
-      toast.error(msg)
+      if (!silent) toast.error(msg)
       return false
     }
-  }
+  }, [user])
+
+  // Auto-subscribe silently when permission is already granted (user previously allowed)
+  // Also re-subscribe on every load to keep the subscription fresh after VAPID key changes
+  useEffect(() => {
+    if (!user) return
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+
+    // Small delay to let the app fully initialize
+    const timer = setTimeout(() => {
+      subscribeToPush(true).then(success => {
+        if (success) console.log('[PushNotifications] Auto-subscribed silently')
+      })
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [user, subscribeToPush])
+
+  // Check initial state
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    navigator.serviceWorker.ready.then(reg => {
+      reg.pushManager.getSubscription().then(sub => {
+        setIsSubscribed(!!sub)
+      })
+    })
+  }, [])
 
   return { isSubscribed, subscribeToPush, error }
 }
