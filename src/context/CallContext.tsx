@@ -231,7 +231,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (isCaller) {
         // voiceActivityDetection:false prevents first-syllable cutoff
-        const offer = await pc.createOffer({ voiceActivityDetection: false });
+        const offer = await pc.createOffer({ voiceActivityDetection: false } as any);
         await pc.setLocalDescription(offer);
         socket.emit('call:signal', { to: targetSocketId, signal: offer });
         console.log('[Call] Offer sent to', targetSocketId);
@@ -265,7 +265,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
       // 4. Create and send answer
-      const answer = await pc.createAnswer({ voiceActivityDetection: false });
+      const answer = await pc.createAnswer({ voiceActivityDetection: false } as any);
       await pc.setLocalDescription(answer);
       socket.emit('call:signal', { to: fromSocketId, signal: answer });
       console.log('[Call] Answer sent to', fromSocketId);
