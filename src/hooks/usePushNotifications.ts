@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/utils/api'
 import { useAuth } from '@/context/AuthContext'
-import { toast } from 'react-hot-toast'
+import { toast } from 'sonner'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
