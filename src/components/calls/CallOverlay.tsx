@@ -96,9 +96,6 @@ export const CallOverlay = () => {
 
   return (
     <AnimatePresence>
-      {/* Hidden audio element — always plays remote audio regardless of video state */}
-      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
-      
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ 
@@ -111,6 +108,9 @@ export const CallOverlay = () => {
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
         className="fixed bottom-6 right-6 z-[9999] bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-500"
       >
+        {/* Single canonical audio element — always mounted so audio survives minimize */}
+        <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+
         {isMinimized ? (
           <div className="flex-1 flex items-center justify-between px-6">
             <div className="flex items-center gap-3">
@@ -245,8 +245,6 @@ export const CallOverlay = () => {
                 </>
               )}
             </div>
-            {/* Hidden audio element for remote audio track */}
-            <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
           </>
         )}
       </motion.div>

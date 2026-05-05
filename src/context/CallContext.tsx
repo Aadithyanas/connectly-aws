@@ -23,60 +23,114 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   const [isRinging, setIsRinging] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
   const [activeCall, setActiveCall] = useState<any | null>(null);
-  
+
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const activeCallRef = useRef<any>(null);
+
+  // ICE candidate queue — hold candidates until remote description is set
+  const iceCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  const hasRemoteDesc = useRef(false);
+  // Timer to allow ICE 'disconnected' to recover before giving up
+  const iceRecoveryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { user } = useAuth();
 
-  // Keep activeCallRef in sync with state
   useEffect(() => {
     activeCallRef.current = activeCall;
   }, [activeCall]);
 
-  const ICE_SERVERS = {
+  // ─── ICE Config: STUN + TURN for every network topology ───────────────────
+  const ICE_SERVERS: RTCConfiguration = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      // Open Relay TURN — covers symmetric NAT, mobile networks, corporate WiFi
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
     ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
   };
 
-  // Cleanup helper for peer connection
-  const cleanupPeerConnection = useCallback(() => {
+  // ─── Adaptive media constraints ────────────────────────────────────────────
+  const getMediaConstraints = (isVideo: boolean): MediaStreamConstraints => {
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: 48000,
+    };
+    if (!isVideo) return { audio: audioConstraints, video: false };
+    return {
+      audio: audioConstraints,
+      video: {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+        facingMode: 'user',
+      },
+    };
+  };
+
+  const clearIceRecovery = () => {
+    if (iceRecoveryTimer.current) {
+      clearTimeout(iceRecoveryTimer.current);
+      iceRecoveryTimer.current = null;
+    }
+  };
+
+  // ─── Full cleanup ──────────────────────────────────────────────────────────
+  const handleEndCall = useCallback(() => {
+    clearIceRecovery();
+    hasRemoteDesc.current = false;
+    iceCandidateQueue.current = [];
+    setIsRinging(false);
+    setIsCalling(false);
+    setActiveCall(null);
+    setLocalStream(prev => {
+      if (prev) prev.getTracks().forEach(t => t.stop());
+      return null;
+    });
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
     }
+    setRemoteStream(null);
   }, []);
 
-  // Cleanup helper for local stream
-  const cleanupLocalStream = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      setLocalStream(null);
+  // ─── Drain queued ICE candidates after remote description is applied ───────
+  const drainQueue = useCallback(async () => {
+    const pc = peerConnection.current;
+    if (!pc) return;
+    while (iceCandidateQueue.current.length > 0) {
+      const c = iceCandidateQueue.current.shift()!;
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
+      catch (e) { console.warn('[Call] Queued ICE add failed:', e); }
     }
-  }, [localStream]);
+  }, []);
 
-  const handleEndCall = useCallback(() => {
-    setIsRinging(false);
-    setIsCalling(false);
-    setActiveCall(null);
-    // Stop all tracks on current local stream
-    setLocalStream(prev => {
-      if (prev) prev.getTracks().forEach(track => track.stop());
-      return null;
-    });
-    cleanupPeerConnection();
-    setRemoteStream(null);
-  }, [cleanupPeerConnection]);
-
-  // Create peer connection for WebRTC
+  // ─── Create RTCPeerConnection ──────────────────────────────────────────────
   const createPeerConnection = useCallback((targetSocketId: string) => {
-    if (peerConnection.current) {
-      // Close existing connection before creating a new one
-      peerConnection.current.close();
-    }
+    if (peerConnection.current) peerConnection.current.close();
+    hasRemoteDesc.current = false;
+    iceCandidateQueue.current = [];
 
     const socket = socketService.getSocket();
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -88,15 +142,58 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     pc.ontrack = (event) => {
-      console.log('[Call] Remote track received:', event.streams[0]?.id);
-      setRemoteStream(event.streams[0]);
+      console.log('[Call] Remote track received');
+      if (event.streams?.[0]) setRemoteStream(event.streams[0]);
     };
 
-    pc.oniceconnectionstatechange = () => {
-      console.log('[Call] ICE connection state:', pc.iceConnectionState);
-      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-        toast.error('Call connection lost');
+    // ── Connection state: definitive success/failure ──
+    pc.onconnectionstatechange = () => {
+      console.log('[Call] Connection state:', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        clearIceRecovery();
+      } else if (pc.connectionState === 'failed') {
+        clearIceRecovery();
+        toast.error('Call connection failed');
         handleEndCall();
+      }
+    };
+
+    // ── ICE state: handle transient disconnects with recovery ──
+    pc.oniceconnectionstatechange = () => {
+      console.log('[Call] ICE state:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        clearIceRecovery();
+      } else if (pc.iceConnectionState === 'disconnected') {
+        // Give it 8 s to self-heal (NAT rebind, mobile handoff, etc.)
+        clearIceRecovery();
+        iceRecoveryTimer.current = setTimeout(() => {
+          const state = peerConnection.current?.iceConnectionState;
+          if (state === 'disconnected' || state === 'failed') {
+            toast.error('Call connection lost');
+            handleEndCall();
+          }
+        }, 8000);
+        // Trigger ICE restart immediately
+        try { peerConnection.current?.restartIce(); } catch (_) {}
+      } else if (pc.iceConnectionState === 'failed') {
+        clearIceRecovery();
+        toast.error('Call connection failed');
+        handleEndCall();
+      }
+    };
+
+    // ── Re-negotiate only when in stable state (avoids double-offer on track add) ──
+    pc.onnegotiationneeded = async () => {
+      const currentCall = activeCallRef.current;
+      // Only re-negotiate if stable (not during initial offer/answer exchange)
+      if (!currentCall?.isIncoming && peerConnection.current === pc && pc.signalingState === 'stable') {
+        try {
+          const offer = await pc.createOffer({ iceRestart: true });
+          await pc.setLocalDescription(offer);
+          if (socket && currentCall?.targetSocketId) {
+            socket.emit('call:signal', { to: currentCall.targetSocketId, signal: offer });
+          }
+        } catch (e) { console.warn('[Call] Re-negotiation failed:', e); }
       }
     };
 
@@ -104,19 +201,14 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     return pc;
   }, [handleEndCall]);
 
-  // Start signaling - get media and create offer/answer
+  // ─── Caller: get media → create offer ─────────────────────────────────────
   const startSignaling = useCallback(async (isCaller: boolean, targetSocketId: string) => {
     const socket = socketService.getSocket();
     try {
-      const currentCall = activeCallRef.current;
-      const isVideo = currentCall?.type === 'video';
-      
-      console.log('[Call] Starting signaling, isCaller:', isCaller, 'isVideo:', isVideo);
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: isVideo,
-        audio: true
-      });
+      const isVideo = activeCallRef.current?.type === 'video';
+      console.log('[Call] startSignaling isCaller:', isCaller, 'video:', isVideo);
+
+      const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(isVideo));
       setLocalStream(stream);
 
       const pc = createPeerConnection(targetSocketId);
@@ -129,28 +221,25 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
         console.log('[Call] Offer sent to', targetSocketId);
       }
     } catch (err) {
-      console.error('[Call] Failed to get media devices:', err);
-      toast.error('Could not access camera/microphone');
+      console.error('[Call] Media error:', err);
+      toast.error('Could not access microphone/camera — check browser permissions.');
       handleEndCall();
     }
   }, [createPeerConnection, handleEndCall]);
 
-  // Handle incoming WebRTC offer
+  // ─── Callee: receive offer → send answer ──────────────────────────────────
   const handleOffer = useCallback(async (offer: any, fromSocketId: string) => {
     const socket = socketService.getSocket();
     try {
-      const currentCall = activeCallRef.current;
-      const isVideo = currentCall?.type === 'video';
-      
+      const isVideo = activeCallRef.current?.type === 'video';
       console.log('[Call] Handling offer from', fromSocketId);
-      
+
       const pc = createPeerConnection(fromSocketId);
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: isVideo,
-        audio: true
-      });
+      hasRemoteDesc.current = true;
+      await drainQueue();
+
+      const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(isVideo));
       setLocalStream(stream);
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
@@ -159,69 +248,54 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       socket.emit('call:signal', { to: fromSocketId, signal: answer });
       console.log('[Call] Answer sent to', fromSocketId);
     } catch (err) {
-      console.error('[Call] Error handling offer:', err);
+      console.error('[Call] handleOffer error:', err);
       toast.error('Failed to establish call');
       handleEndCall();
     }
-  }, [createPeerConnection, handleEndCall]);
+  }, [createPeerConnection, handleEndCall, drainQueue]);
 
-  // Handle incoming WebRTC answer
+  // ─── Caller: receive answer ────────────────────────────────────────────────
   const handleAnswer = useCallback(async (answer: any) => {
-    if (peerConnection.current) {
-      console.log('[Call] Setting remote description (answer)');
-      await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
-    }
-  }, []);
+    if (!peerConnection.current) return;
+    console.log('[Call] Setting remote description (answer)');
+    await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+    hasRemoteDesc.current = true;
+    await drainQueue();
+  }, [drainQueue]);
 
-  // Handle incoming ICE candidate
+  // ─── ICE candidate — queue if no remote desc yet ──────────────────────────
   const handleCandidate = useCallback(async (candidate: any) => {
-    if (peerConnection.current) {
-      try {
-        await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (e) {
-        console.error('[Call] Error adding ICE candidate:', e);
-      }
+    if (!peerConnection.current) return;
+    if (!hasRemoteDesc.current) {
+      iceCandidateQueue.current.push(candidate);
+      return;
     }
+    try {
+      await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) { console.warn('[Call] ICE add failed:', e); }
   }, []);
 
-  // Main socket listener setup
+  // ─── Socket listeners ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
-
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    // Ensure we join presence room - critical for receiving calls
     const joinPresence = () => {
-      console.log('[Call] Joining presence room for user:', user.id);
       socket.emit('join_presence', user.id);
     };
-
-    // Join on connect and reconnect
-    if (socket.connected) {
-      joinPresence();
-    }
+    if (socket.connected) joinPresence();
     socket.on('connect', joinPresence);
 
-    // ---- CALL EVENT HANDLERS ----
-
-    // Incoming call request (1:1)
     const onRequest = (data: any) => {
-      console.log('[Call] Incoming call request from:', data.from, data.caller?.name);
       setActiveCall({ ...data, isIncoming: true });
       setIsRinging(true);
     };
-
-    // Incoming group call
     const onGroupIncoming = (data: any) => {
-      console.log('[Call] Incoming group call:', data.roomId);
       setActiveCall({ ...data, isIncoming: true });
       setIsRinging(true);
     };
-
-    // Response to our outgoing call request
-    const onRequestResult = (data: { accepted: boolean, from: string }) => {
-      console.log('[Call] Request result:', data.accepted ? 'ACCEPTED' : 'REJECTED', 'from socket:', data.from);
+    const onRequestResult = (data: { accepted: boolean; from: string }) => {
       if (data.accepted) {
         toast.success('Call accepted!');
         setIsCalling(false);
@@ -233,38 +307,25 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
         setActiveCall(null);
       }
     };
-
-    // WebRTC signaling data (offer/answer/ICE)
-    const onSignal = async (data: { from: string, signal: any }) => {
+    const onSignal = async (data: { from: string; signal: any }) => {
       const { signal } = data;
-      console.log('[Call] Signal received, type:', signal.type || (signal.candidate ? 'ice-candidate' : 'unknown'));
-      
       if (signal.type === 'offer') {
         await handleOffer(signal, data.from);
       } else if (signal.type === 'answer') {
         await handleAnswer(signal);
-      } else if (signal.candidate) {
+      } else if (signal.candidate !== undefined) {
         await handleCandidate(signal);
       }
     };
-
-    // Call ended by the other party
-    const onEnd = () => {
-      console.log('[Call] Remote end received');
-      handleEndCall();
-    };
-
-    // Remote user disconnected
-    const onUserDisconnected = (disconnectedSocketId: string) => {
-      const currentCall = activeCallRef.current;
-      if (currentCall && (currentCall.from === disconnectedSocketId || currentCall.targetSocketId === disconnectedSocketId)) {
-        console.log('[Call] Remote user disconnected during call');
+    const onEnd = () => handleEndCall();
+    const onUserDisconnected = (socketId: string) => {
+      const c = activeCallRef.current;
+      if (c && (c.from === socketId || c.targetSocketId === socketId)) {
         toast.info('The other user disconnected');
         handleEndCall();
       }
     };
 
-    // Register all listeners
     socket.on('call:request', onRequest);
     socket.on('call:group-incoming', onGroupIncoming);
     socket.on('call:request-result', onRequestResult);
@@ -283,85 +344,60 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [user?.id, startSignaling, handleOffer, handleAnswer, handleCandidate, handleEndCall]);
 
-  // Auto-reject timeout (30 seconds)
+  // Auto-reject outgoing call after 30 s
   useEffect(() => {
     if (!isCalling) return;
-    const timeout = setTimeout(() => {
+    const t = setTimeout(() => {
       toast.error('No answer. Call timed out.');
       setIsCalling(false);
       setActiveCall(null);
     }, 30000);
-    return () => clearTimeout(timeout);
+    return () => clearTimeout(t);
   }, [isCalling]);
 
-  // Initiate a call
   const initiateCall = useCallback((to: string, type: 'audio' | 'video', isGroup = false, targetName = 'User') => {
     const socket = socketService.getSocket();
     if (!socket || !user) return;
-    
-    console.log('[Call] Initiating call to:', to, 'type:', type, 'isGroup:', isGroup);
-    
     setIsCalling(true);
-    setActiveCall({
-      caller: { name: targetName },
-      type,
-      targetUserId: to
-    });
-
+    setActiveCall({ caller: { name: targetName }, type, targetUserId: to, isIncoming: false });
     socket.emit('call:initiate', {
-      to,
-      type,
-      isGroup,
-      callerInfo: { 
-        name: user?.name || user?.email || 'Someone', 
-        role: 'student',
-      }
+      to, type, isGroup,
+      callerInfo: { name: user?.name || user?.email || 'Someone', role: 'student' },
     });
   }, [user]);
 
-  // Accept an incoming call
   const acceptCall = useCallback(() => {
     const socket = socketService.getSocket();
-    const currentCall = activeCallRef.current;
-    if (!socket || !currentCall) return;
-    
-    console.log('[Call] Accepting call from:', currentCall.from);
+    const c = activeCallRef.current;
+    if (!socket || !c) return;
     setIsRinging(false);
-    socket.emit('call:request-response', { to: currentCall.from, accepted: true });
-    // The caller will send us an offer after receiving our acceptance
-    // We wait for the offer in the onSignal handler
+    socket.emit('call:request-response', { to: c.from, accepted: true });
   }, []);
 
-  // Reject an incoming call
   const rejectCall = useCallback(() => {
     const socket = socketService.getSocket();
-    const currentCall = activeCallRef.current;
-    if (!socket || !currentCall) return;
-    
-    console.log('[Call] Rejecting call from:', currentCall.from);
+    const c = activeCallRef.current;
+    if (!socket || !c) return;
     setIsRinging(false);
-    socket.emit('call:request-response', { to: currentCall.from, accepted: false });
+    socket.emit('call:request-response', { to: c.from, accepted: false });
     setActiveCall(null);
   }, []);
 
-  // End an active call
   const endCall = useCallback(() => {
     const socket = socketService.getSocket();
-    const currentCall = activeCallRef.current;
-    if (socket && currentCall) {
-      const target = currentCall.from || currentCall.targetSocketId;
-      if (target) {
-        socket.emit('call:end', { to: target });
-      }
+    const c = activeCallRef.current;
+    if (socket && c) {
+      const target = c.from || c.targetSocketId;
+      if (target) socket.emit('call:end', { to: target });
     }
     handleEndCall();
   }, [handleEndCall]);
 
   return (
-    <CallContext.Provider value={{ 
-      isRinging, isCalling, activeCall, 
+    <CallContext.Provider value={{
+      isRinging, isCalling, activeCall,
       initiateCall, acceptCall, rejectCall, endCall,
-      localStream, remoteStream
+      localStream, remoteStream,
     }}>
       {children}
     </CallContext.Provider>
