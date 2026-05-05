@@ -82,12 +82,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     if (!isVideo) return { audio: audioConstraints, video: false };
     return {
       audio: audioConstraints,
-      video: {
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
-        frameRate: { ideal: 30, max: 60 },
-        facingMode: 'user',
-      },
+      video: true,
     };
   };
 

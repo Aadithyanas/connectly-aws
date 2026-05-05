@@ -74,7 +74,7 @@ export const CallOverlay = () => {
     }
   }, [activeSpeakerId]);
 
-  // ── Enumerate audio output devices ─────────────────────────────────────────
+  // ── Enumerate audio output devices (re-run after permissions are granted) ──
   useEffect(() => {
     const load = async () => {
       try {
@@ -85,7 +85,41 @@ export const CallOverlay = () => {
     load();
     navigator.mediaDevices.addEventListener('devicechange', load);
     return () => navigator.mediaDevices.removeEventListener('devicechange', load);
-  }, []);
+  }, [localStream]);
+
+  // ── Ringtone and System Notification for Incoming Calls ─────────────────────
+  useEffect(() => {
+    let audio: HTMLAudioElement | null = null;
+    
+    if (isRinging && activeCall?.isIncoming) {
+      // 1. Play ringing sound
+      audio = new Audio('/ringtone.mp3'); // We'll assume a generic path or it falls back to silent if missing
+      audio.loop = true;
+      audio.play().catch(() => console.warn('Autoplay blocked for ringtone'));
+
+      // 2. Show System Notification if backgrounded
+      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        const notif = new Notification('Incoming Call', {
+          body: `${activeCall?.caller?.name || 'Someone'} is calling you...`,
+          icon: activeCall?.caller?.avatar || '/favicon.ico',
+          requireInteraction: true,
+        });
+        notif.onclick = () => {
+          window.focus();
+          notif.close();
+        };
+      } else if ('Notification' in window && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+    }
+
+    return () => {
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    };
+  }, [isRinging, activeCall]);
 
   const selectSpeaker = async (deviceId: string) => {
     setActiveSpeakerId(deviceId);
