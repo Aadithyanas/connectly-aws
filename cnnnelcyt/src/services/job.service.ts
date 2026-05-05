@@ -42,7 +42,7 @@ export const fetchExternalJobs = async (query: string = '', location: string = '
       const urlString = job.redirect_url.toLowerCase();
       let platform = '';
       
-      // 1. Check for common "Big" platforms
+      // 1. Check for common "Big" platforms in the URL
       if (urlString.includes('linkedin')) platform = 'LinkedIn';
       else if (urlString.includes('glassdoor')) platform = 'Glassdoor';
       else if (urlString.includes('indeed')) platform = 'Indeed';
@@ -53,11 +53,23 @@ export const fetchExternalJobs = async (query: string = '', location: string = '
       else if (urlString.includes('shine')) platform = 'Shine';
       else if (urlString.includes('timesjobs')) platform = 'TimesJobs';
       
-      // 2. If unknown, extract the domain name (e.g. "google.com" -> "Google")
-      if (!platform) {
+      // 2. If it's an Adzuna tracking link, try to find the source in the description or company
+      if (!platform || platform === 'Adzuna') {
+        const desc = job.description.toLowerCase();
+        if (desc.includes('linkedin')) platform = 'LinkedIn';
+        else if (desc.includes('indeed')) platform = 'Indeed';
+        else if (desc.includes('glassdoor')) platform = 'Glassdoor';
+      }
+
+      // 3. If still unknown, extract domain but avoid "Adzuna" if possible
+      if (!platform || platform.toLowerCase() === 'adzuna') {
         try {
           const domain = new URL(job.redirect_url).hostname.replace('www.', '').split('.')[0];
           platform = domain.charAt(0).toUpperCase() + domain.slice(1);
+          
+          if (platform.toLowerCase() === 'adzuna') {
+            platform = 'Job Board'; // More generic than "Adzuna"
+          }
         } catch (e) {
           platform = 'External';
         }
