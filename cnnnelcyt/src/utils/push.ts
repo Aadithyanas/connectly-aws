@@ -14,10 +14,16 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 
 export const sendPushNotification = async (userId: string, payload: any) => {
   try {
+    console.log(`[Web Push] Attempting to send push to user: ${userId}`);
     const result = await query('SELECT * FROM push_subscriptions WHERE user_id = $1', [userId]);
     const subscriptions = result.rows;
 
-    if (!subscriptions || subscriptions.length === 0) return;
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log(`[Web Push] No subscriptions found for user: ${userId}`);
+      return;
+    }
+
+    console.log(`[Web Push] Found ${subscriptions.length} subscriptions for user: ${userId}`);
 
     for (const sub of subscriptions) {
       const pushSubscription = {
@@ -30,12 +36,13 @@ export const sendPushNotification = async (userId: string, payload: any) => {
 
       try {
         await webpush.sendNotification(pushSubscription, JSON.stringify(payload));
+        console.log(`[Web Push] Successfully sent notification to endpoint: ${sub.endpoint.substring(0, 30)}...`);
       } catch (err: any) {
         if (err.statusCode === 410 || err.statusCode === 404) {
-          // Subscription has expired or is no longer valid, delete it
+          console.log(`[Web Push] Subscription expired, deleting: ${sub.endpoint.substring(0, 30)}...`);
           await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
         } else {
-          console.error('[Web Push] Error sending notification to user', userId, err);
+          console.error('[Web Push] Error sending notification:', err);
         }
       }
     }
