@@ -43,7 +43,9 @@ export const getChatById = async (req: any, res: Response): Promise<void> => {
           'id', p.id, 
           'name', p.name, 
           'avatar_url', p.avatar_url,
-          'role', cm2.role,
+          'role', p.role,
+          'membership_role', cm2.role,
+          'availability_status', p.availability_status,
           'status', p.status,
           'membership_status', cm2.status,
           'last_seen', p.last_seen
@@ -191,7 +193,9 @@ export const getChats = async (req: any, res: Response): Promise<void> => {
           'id', p.id, 
           'name', p.name, 
           'avatar_url', p.avatar_url,
-          'role', cm2.role,
+          'role', p.role,
+          'membership_role', cm2.role,
+          'availability_status', p.availability_status,
           'status', p.status,
           'membership_status', cm2.status,
           'last_seen', p.last_seen

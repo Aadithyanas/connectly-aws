@@ -10,15 +10,27 @@ class SocketService {
       const token = localStorage.getItem('token');
       this.socket = io(SOCKET_URL, {
         auth: { token },
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
       });
 
       this.socket.on('connect', () => {
-        console.log('Socket connected:', this.socket?.id);
+        console.log('[Socket] Connected:', this.socket?.id);
       });
 
-      this.socket.on('disconnect', () => {
-        console.log('Socket disconnected');
+      this.socket.on('reconnect', (attempt: number) => {
+        console.log('[Socket] Reconnected after', attempt, 'attempts');
+      });
+
+      this.socket.on('disconnect', (reason) => {
+        console.log('[Socket] Disconnected:', reason);
+      });
+
+      this.socket.on('connect_error', (err) => {
+        console.warn('[Socket] Connection error:', err.message);
       });
     }
     return this.socket;

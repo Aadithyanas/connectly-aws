@@ -132,9 +132,9 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
             const members = chat.members || []
             setGroupMemberCount(members.length)
             
-            // Find the current user's role instead of hardcoding 'member'
+            // Find the current user's role using membership_role
             const me = members.find((m: any) => m.id === user.id)
-            const membership = me ? { role: me.role, status: me.membership_status || 'joined' } : { role: 'member', status: 'joined' }
+            const membership = me ? { role: me.membership_role || me.role, status: me.membership_status || 'joined' } : { role: 'member', status: 'joined' }
             setMyMembership(membership)
             localStorage.setItem(`membership_${chatId}`, JSON.stringify(membership))
           } else {
@@ -268,6 +268,8 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
     }
   }
 
+  const isAway = !chatDetails?.is_group && otherUser?.role === 'professional' && otherUser?.availability_status === false;
+
   const handleStartCall = (type: 'audio' | 'video') => {
     if (!chatId) return;
 
@@ -298,7 +300,7 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
   } : {
     name: otherUser?.name,
     avatar: otherUser?.avatar_url,
-    status: isOtherTyping ? 'typing...' : (isOtherOnline ? 'online' : (otherUser?.last_seen ? `last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'offline')),
+    status: isOtherTyping ? 'typing...' : (isAway ? 'Away' : (isOtherOnline ? 'online' : (otherUser?.last_seen ? `last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'offline'))),
     isGroup: false
   }
 
@@ -394,16 +396,18 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
         </div>
         <div className="flex items-center gap-1 px-1">
           <button 
+            disabled={isAway}
             onClick={(e) => { e.stopPropagation(); handleStartCall('audio'); }}
-            className="p-2 text-[#adaaaa] hover:text-[#bc9dff] transition-colors"
-            title="Voice Call"
+            className={`p-2 transition-colors ${isAway ? 'text-zinc-800 cursor-not-allowed' : 'text-[#adaaaa] hover:text-[#bc9dff]'}`}
+            title={isAway ? 'User is away' : 'Voice Call'}
           >
             <Phone className="w-4 h-4" />
           </button>
           <button 
+            disabled={isAway}
             onClick={(e) => { e.stopPropagation(); handleStartCall('video'); }}
-            className="p-2 text-[#adaaaa] hover:text-[#bc9dff] transition-colors"
-            title="Video Call"
+            className={`p-2 transition-colors ${isAway ? 'text-zinc-800 cursor-not-allowed' : 'text-[#adaaaa] hover:text-[#bc9dff]'}`}
+            title={isAway ? 'User is away' : 'Video Call'}
           >
             <Video className="w-4 h-4" />
           </button>

@@ -96,6 +96,9 @@ export default function NewChatModal({ isOpen, onClose, onChatCreated, onOpenNew
   const filteredProfiles = search.trim() === '' 
     ? [] 
     : profiles.filter(p => {
+        // Hide professionals who have turned off their availability
+        if (p.role === 'professional' && p.availability_status === false) return false;
+        
         const query = search.toLowerCase()
         return (p.name || '').toLowerCase().includes(query) || (p.role === 'professional' && (p.companies?.name || '').toLowerCase().includes(query))
       })

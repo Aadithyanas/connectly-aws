@@ -46,6 +46,7 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
   const [imageError, setImageError] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isMounted, setIsMounted] = useState(false)
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
 
   const { isInstallable, installApp } = usePWAInstall()
   
@@ -176,6 +177,27 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
   useEffect(() => {
     setIsMounted(true)
   }, [])
+
+  // Real-time presence tracking for online dots
+  useEffect(() => {
+    if (!user?.id) return
+    const socket = socketService.getSocket()
+    const handlePresenceUpdate = ({ userId, status }: { userId: string, status: string }) => {
+      setOnlineUserIds(prev => {
+        const next = new Set(prev)
+        if (status === 'online') {
+          next.add(userId)
+        } else {
+          next.delete(userId)
+        }
+        return next
+      })
+    }
+    socket.on('presence_update', handlePresenceUpdate)
+    return () => {
+      socket.off('presence_update', handlePresenceUpdate)
+    }
+  }, [user?.id])
 
   useEffect(() => {
     // Fail-safe to hide skeletons after 8 seconds
@@ -712,8 +734,8 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
                         </div>
                       )}
                     </div>
-                    {chat.other_profile && isUserOnline(chat.other_profile) && chat.other_profile?.availability_status !== false && (
-                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-white rounded-full border-2 border-black"></div>
+                    {chat.other_profile && (isUserOnline(chat.other_profile) || onlineUserIds.has(chat.other_profile.id)) && chat.other_profile?.availability_status !== false && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#bc9dff] rounded-full border-2 border-[#0e0e0e] shadow-[0_0_6px_rgba(188,157,255,0.6)]"></div>
                     )}
                   </div>
 
