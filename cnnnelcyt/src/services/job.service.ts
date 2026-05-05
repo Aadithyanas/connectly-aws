@@ -61,6 +61,8 @@ export const fetchExternalJobs = async (query: string = '', location: string = '
         } catch (e) {
           platform = 'External';
         }
+      }
+
       return {
         id: `ext-${job.id}`,
         title: job.title,
