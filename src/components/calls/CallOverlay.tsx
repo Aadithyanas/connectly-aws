@@ -87,96 +87,106 @@ export const CallOverlay = () => {
     return () => navigator.mediaDevices.removeEventListener('devicechange', load);
   }, [localStream]);
 
+  // ── Ringtone refs (must be refs so cleanup always works) ─────────────────────
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+  const synthCtxRef = useRef<AudioContext | null>(null);
+  const synthIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopRingtone = useCallback(() => {
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.src = '';
+      ringtoneRef.current = null;
+    }
+    if (synthIntervalRef.current) {
+      clearInterval(synthIntervalRef.current);
+      synthIntervalRef.current = null;
+    }
+    if (synthCtxRef.current) {
+      synthCtxRef.current.close().catch(() => {});
+      synthCtxRef.current = null;
+    }
+  }, []);
+
   // ── Ringtone for Incoming AND Outgoing Calls ─────────────────────────────────
   useEffect(() => {
-    let ringtoneAudio: HTMLAudioElement | null = null;
-    let fallbackCtx: AudioContext | null = null;
-    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
-
     const shouldRing = (isRinging && activeCall?.isIncoming) || isCalling;
     
-    if (shouldRing) {
-      // Try real audio file first
-      try {
-        ringtoneAudio = new Audio('/ringtone.wav');
-        ringtoneAudio.loop = true;
-        ringtoneAudio.volume = 0.7;
-        ringtoneAudio.play().catch(() => {
-          // Autoplay blocked — fall back to Web Audio API synthesis
-          console.log('[Call] Audio file blocked, falling back to synthesis');
-          startSynthRingtone();
-        });
-      } catch {
+    if (!shouldRing) {
+      stopRingtone();
+      return;
+    }
+
+    // Stop any previous ringtone before starting new one
+    stopRingtone();
+
+    try {
+      const audio = new Audio('/ringtone.wav');
+      audio.loop = true;
+      audio.volume = 0.7;
+      ringtoneRef.current = audio;
+      audio.play().catch(() => {
+        console.log('[Call] Audio file blocked, falling back to synthesis');
         startSynthRingtone();
-      }
+      });
+    } catch {
+      startSynthRingtone();
+    }
 
-      function startSynthRingtone() {
-        const playRing = () => {
-          try {
-            if (!fallbackCtx) fallbackCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            if (fallbackCtx.state === 'suspended') fallbackCtx.resume();
-            
-            const osc1 = fallbackCtx.createOscillator();
-            const osc2 = fallbackCtx.createOscillator();
-            const gainNode = fallbackCtx.createGain();
-            
-            osc1.type = 'sine';
-            osc2.type = 'sine';
-            osc1.frequency.setValueAtTime(440, fallbackCtx.currentTime);
-            osc2.frequency.setValueAtTime(480, fallbackCtx.currentTime);
-            
-            osc1.connect(gainNode);
-            osc2.connect(gainNode);
-            gainNode.connect(fallbackCtx.destination);
-            
-            gainNode.gain.setValueAtTime(0, fallbackCtx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.4, fallbackCtx.currentTime + 0.05);
-            gainNode.gain.setValueAtTime(0.4, fallbackCtx.currentTime + 0.4);
-            gainNode.gain.linearRampToValueAtTime(0, fallbackCtx.currentTime + 0.45);
-            gainNode.gain.setValueAtTime(0, fallbackCtx.currentTime + 0.6);
-            gainNode.gain.linearRampToValueAtTime(0.4, fallbackCtx.currentTime + 0.65);
-            gainNode.gain.setValueAtTime(0.4, fallbackCtx.currentTime + 1.0);
-            gainNode.gain.linearRampToValueAtTime(0, fallbackCtx.currentTime + 1.05);
-            
-            osc1.start(fallbackCtx.currentTime);
-            osc2.start(fallbackCtx.currentTime);
-            osc1.stop(fallbackCtx.currentTime + 1.1);
-            osc2.stop(fallbackCtx.currentTime + 1.1);
-          } catch (e) { console.warn('AudioContext blocked', e); }
-        };
-        playRing();
-        fallbackInterval = setInterval(playRing, 3000);
-      }
+    function startSynthRingtone() {
+      const playRing = () => {
+        try {
+          if (!synthCtxRef.current) synthCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const ctx = synthCtxRef.current;
+          if (ctx.state === 'suspended') ctx.resume();
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          osc1.frequency.setValueAtTime(440, ctx.currentTime);
+          osc2.frequency.setValueAtTime(480, ctx.currentTime);
+          osc1.connect(gainNode);
+          osc2.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          gainNode.gain.setValueAtTime(0, ctx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.05);
+          gainNode.gain.setValueAtTime(0.4, ctx.currentTime + 0.4);
+          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.45);
+          gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.6);
+          gainNode.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.65);
+          gainNode.gain.setValueAtTime(0.4, ctx.currentTime + 1.0);
+          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.05);
+          osc1.start(ctx.currentTime);
+          osc2.start(ctx.currentTime);
+          osc1.stop(ctx.currentTime + 1.1);
+          osc2.stop(ctx.currentTime + 1.1);
+        } catch (e) { console.warn('AudioContext blocked', e); }
+      };
+      playRing();
+      synthIntervalRef.current = setInterval(playRing, 3000);
+    }
 
-      // Show System Notification if backgrounded (incoming only)
-      if (isRinging && activeCall?.isIncoming) {
-        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-          const notif = new Notification('Incoming Call', {
-            body: `${activeCall?.caller?.name || 'Someone'} is calling you...`,
-            icon: activeCall?.caller?.avatar || '/favicon.ico',
-            requireInteraction: true,
-          });
-          notif.onclick = () => {
-            window.focus();
-            notif.close();
-          };
-        }
+    if (isRinging && activeCall?.isIncoming) {
+      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        const notif = new Notification('Incoming Call', {
+          body: `${activeCall?.caller?.name || 'Someone'} is calling you...`,
+          icon: activeCall?.caller?.avatar || '/favicon.ico',
+          requireInteraction: true,
+        });
+        notif.onclick = () => { window.focus(); notif.close(); };
       }
     }
 
-    return () => {
-      if (ringtoneAudio) {
-        ringtoneAudio.pause();
-        ringtoneAudio.src = '';
-        ringtoneAudio = null;
-      }
-      if (fallbackInterval) clearInterval(fallbackInterval);
-      if (fallbackCtx) {
-        fallbackCtx.close().catch(() => {});
-        fallbackCtx = null;
-      }
-    };
-  }, [isRinging, isCalling, activeCall]);
+    return () => { stopRingtone(); };
+  }, [isRinging, isCalling, activeCall, stopRingtone]);
+
+  // ── Safety net: kill ringtone when no call is active ─────────────────────────
+  useEffect(() => {
+    if (!activeCall && !isRinging && !isCalling) {
+      stopRingtone();
+    }
+  }, [activeCall, isRinging, isCalling, stopRingtone]);
 
   const selectSpeaker = async (deviceId: string) => {
     setActiveSpeakerId(deviceId);
