@@ -421,14 +421,14 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [user?.id, startSignaling, handleOffer, handleAnswer, handleCandidate, handleEndCall]);
 
-  // Auto-reject outgoing call after 30 s
+  // Auto-reject outgoing call after 45s (enough time for push notification + app open)
   useEffect(() => {
     if (!isCalling) return;
     const t = setTimeout(() => {
       toast.error('No answer. Call timed out.');
       setIsCalling(false);
       setActiveCall(null);
-    }, 30000);
+    }, 45000);
     return () => clearTimeout(t);
   }, [isCalling]);
 

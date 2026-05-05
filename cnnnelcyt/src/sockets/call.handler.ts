@@ -5,8 +5,41 @@ import { query } from '../db';
 // Track active call pairs: socketId -> partnerSocketId
 const activeCallPairs = new Map<string, string>();
 
+// Track pending calls: userId -> call data (so we can re-emit when user reconnects)
+const pendingCalls = new Map<string, {
+  from: string,
+  caller: { name: string, avatar?: string, role: string },
+  type: 'audio' | 'video',
+  timestamp: number
+}>();
+
+// Clean up expired pending calls (older than 45 seconds)
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, call] of pendingCalls.entries()) {
+    if (now - call.timestamp > 45000) {
+      pendingCalls.delete(userId);
+    }
+  }
+}, 10000);
+
 export const setupCallHandlers = (io: Server, socket: Socket) => {
   
+  // When a user joins presence, check if there's a pending call for them
+  // This handles the case where the user opened the app from a push notification
+  socket.on('join_presence', (userId: string) => {
+    const pending = pendingCalls.get(userId);
+    if (pending && (Date.now() - pending.timestamp < 45000)) {
+      console.log(`[Call] Re-emitting pending call to reconnected user ${userId}`);
+      socket.emit('call:request', {
+        from: pending.from,
+        caller: pending.caller,
+        type: pending.type
+      });
+      // Don't delete — let it stay until answered/rejected/expired
+    }
+  });
+
   // 1. INITIATE A CALL (With Permission Check)
   socket.on('call:initiate', async (data: { 
     to: string, 
@@ -47,6 +80,14 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       return;
     }
 
+    // Store as pending call (so we can re-emit if user opens app from notification)
+    pendingCalls.set(to, {
+      from: socket.id,
+      caller: callerInfo,
+      type: data.type,
+      timestamp: Date.now()
+    });
+
     // Emit to the target user's presence room
     console.log(`[Call] Sending call:request to presence:${to}`);
     socket.to(`presence:${to}`).emit('call:request', {
@@ -69,6 +110,15 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
   socket.on('call:request-response', (data: { to: string, accepted: boolean }) => {
     console.log(`[Call] Request response from ${socket.id} to ${data.to}: ${data.accepted ? 'ACCEPTED' : 'REJECTED'}`);
     
+    // Clear pending call for this user
+    // Find and delete the pending call where the caller socket matches
+    for (const [userId, call] of pendingCalls.entries()) {
+      if (call.from === data.to) {
+        pendingCalls.delete(userId);
+        break;
+      }
+    }
+
     if (data.accepted) {
       // Track the call pair
       activeCallPairs.set(socket.id, data.to);
@@ -97,6 +147,13 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
     // Clean up call pair tracking
     activeCallPairs.delete(socket.id);
     activeCallPairs.delete(data.to);
+
+    // Also clear any pending call from this caller
+    for (const [userId, call] of pendingCalls.entries()) {
+      if (call.from === socket.id || call.from === data.to) {
+        pendingCalls.delete(userId);
+      }
+    }
   });
 
   socket.on('disconnect', () => {
@@ -107,6 +164,14 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       io.to(partnerId).emit('call:user-disconnected', socket.id);
       activeCallPairs.delete(socket.id);
       activeCallPairs.delete(partnerId);
+    }
+
+    // Clear any pending calls FROM this caller (they hung up/disconnected)
+    for (const [userId, call] of pendingCalls.entries()) {
+      if (call.from === socket.id) {
+        console.log(`[Call] Clearing pending call from disconnected caller ${socket.id} to ${userId}`);
+        pendingCalls.delete(userId);
+      }
     }
   });
 };

@@ -87,78 +87,96 @@ export const CallOverlay = () => {
     return () => navigator.mediaDevices.removeEventListener('devicechange', load);
   }, [localStream]);
 
-  // ── Ringtone and System Notification for Incoming Calls ─────────────────────
+  // ── Ringtone for Incoming AND Outgoing Calls ─────────────────────────────────
   useEffect(() => {
-    let audioCtx: AudioContext | null = null;
-    let ringInterval: ReturnType<typeof setInterval> | null = null;
-    let isPlaying = false;
+    let ringtoneAudio: HTMLAudioElement | null = null;
+    let fallbackCtx: AudioContext | null = null;
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+
+    const shouldRing = (isRinging && activeCall?.isIncoming) || isCalling;
     
-    if (isRinging && activeCall?.isIncoming) {
-      // 1. Synthesize Ringing Sound (No MP3 required)
-      const playRing = () => {
-        try {
-          if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          if (audioCtx.state === 'suspended') audioCtx.resume();
-          
-          const osc1 = audioCtx.createOscillator();
-          const osc2 = audioCtx.createOscillator();
-          const gainNode = audioCtx.createGain();
-          
-          osc1.type = 'sine';
-          osc2.type = 'sine';
-          osc1.frequency.setValueAtTime(440, audioCtx.currentTime); // Standard UK/Euro ring tone freq 1
-          osc2.frequency.setValueAtTime(480, audioCtx.currentTime); // Standard UK/Euro ring tone freq 2
-          
-          osc1.connect(gainNode);
-          osc2.connect(gainNode);
-          gainNode.connect(audioCtx.destination);
-          
-          gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-          // First ring (0.4s)
-          gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
-          gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime + 0.4);
-          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.45);
-          // Second ring (0.4s)
-          gainNode.gain.setValueAtTime(0, audioCtx.currentTime + 0.6);
-          gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.65);
-          gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime + 1.0);
-          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.05);
-          
-          osc1.start(audioCtx.currentTime);
-          osc2.start(audioCtx.currentTime);
-          osc1.stop(audioCtx.currentTime + 1.1);
-          osc2.stop(audioCtx.currentTime + 1.1);
-        } catch (e) { console.warn('AudioContext blocked', e); }
-      };
-
-      // Play immediately, then repeat every 3 seconds
-      playRing();
-      ringInterval = setInterval(playRing, 3000);
-      isPlaying = true;
-
-      // 2. Show System Notification if backgrounded
-      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-        const notif = new Notification('Incoming Call', {
-          body: `${activeCall?.caller?.name || 'Someone'} is calling you...`,
-          icon: activeCall?.caller?.avatar || '/favicon.ico',
-          requireInteraction: true,
+    if (shouldRing) {
+      // Try real audio file first
+      try {
+        ringtoneAudio = new Audio('/ringtone.wav');
+        ringtoneAudio.loop = true;
+        ringtoneAudio.volume = 0.7;
+        ringtoneAudio.play().catch(() => {
+          // Autoplay blocked — fall back to Web Audio API synthesis
+          console.log('[Call] Audio file blocked, falling back to synthesis');
+          startSynthRingtone();
         });
-        notif.onclick = () => {
-          window.focus();
-          notif.close();
+      } catch {
+        startSynthRingtone();
+      }
+
+      function startSynthRingtone() {
+        const playRing = () => {
+          try {
+            if (!fallbackCtx) fallbackCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (fallbackCtx.state === 'suspended') fallbackCtx.resume();
+            
+            const osc1 = fallbackCtx.createOscillator();
+            const osc2 = fallbackCtx.createOscillator();
+            const gainNode = fallbackCtx.createGain();
+            
+            osc1.type = 'sine';
+            osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(440, fallbackCtx.currentTime);
+            osc2.frequency.setValueAtTime(480, fallbackCtx.currentTime);
+            
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            gainNode.connect(fallbackCtx.destination);
+            
+            gainNode.gain.setValueAtTime(0, fallbackCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, fallbackCtx.currentTime + 0.05);
+            gainNode.gain.setValueAtTime(0.4, fallbackCtx.currentTime + 0.4);
+            gainNode.gain.linearRampToValueAtTime(0, fallbackCtx.currentTime + 0.45);
+            gainNode.gain.setValueAtTime(0, fallbackCtx.currentTime + 0.6);
+            gainNode.gain.linearRampToValueAtTime(0.4, fallbackCtx.currentTime + 0.65);
+            gainNode.gain.setValueAtTime(0.4, fallbackCtx.currentTime + 1.0);
+            gainNode.gain.linearRampToValueAtTime(0, fallbackCtx.currentTime + 1.05);
+            
+            osc1.start(fallbackCtx.currentTime);
+            osc2.start(fallbackCtx.currentTime);
+            osc1.stop(fallbackCtx.currentTime + 1.1);
+            osc2.stop(fallbackCtx.currentTime + 1.1);
+          } catch (e) { console.warn('AudioContext blocked', e); }
         };
-      } else if ('Notification' in window && Notification.permission !== 'denied') {
-        Notification.requestPermission();
+        playRing();
+        fallbackInterval = setInterval(playRing, 3000);
+      }
+
+      // Show System Notification if backgrounded (incoming only)
+      if (isRinging && activeCall?.isIncoming) {
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+          const notif = new Notification('Incoming Call', {
+            body: `${activeCall?.caller?.name || 'Someone'} is calling you...`,
+            icon: activeCall?.caller?.avatar || '/favicon.ico',
+            requireInteraction: true,
+          });
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+          };
+        }
       }
     }
 
     return () => {
-      if (ringInterval) clearInterval(ringInterval);
-      if (audioCtx && isPlaying) {
-        audioCtx.close().catch(() => {});
+      if (ringtoneAudio) {
+        ringtoneAudio.pause();
+        ringtoneAudio.src = '';
+        ringtoneAudio = null;
+      }
+      if (fallbackInterval) clearInterval(fallbackInterval);
+      if (fallbackCtx) {
+        fallbackCtx.close().catch(() => {});
+        fallbackCtx = null;
       }
     };
-  }, [isRinging, activeCall]);
+  }, [isRinging, isCalling, activeCall]);
 
   const selectSpeaker = async (deviceId: string) => {
     setActiveSpeakerId(deviceId);
