@@ -36,32 +36,27 @@ export function usePushNotifications() {
 
       let subscription = await registration.pushManager.getSubscription()
       
-      // If existing subscription was created with wrong VAPID key, unsubscribe and re-create
+      // ALWAYS unsubscribe existing and re-create with current VAPID key
+      // This guarantees no stale subscriptions from old keys survive
       if (subscription) {
         try {
-          // Test if the existing subscription is valid by checking its key
-          const subJson = subscription.toJSON()
-          if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
-            await subscription.unsubscribe()
-            subscription = null
-          }
+          await subscription.unsubscribe()
+          console.log('[PushNotifications] Unsubscribed old push subscription')
         } catch {
-          if (subscription) await subscription.unsubscribe()
-          subscription = null
+          console.warn('[PushNotifications] Failed to unsubscribe old subscription')
         }
+        subscription = null
       }
 
-      if (!subscription) {
-        if (!VAPID_PUBLIC_KEY) {
-          if (!silent) throw new Error('VAPID public key not set in environment.')
-          return false
-        }
-
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        })
+      if (!VAPID_PUBLIC_KEY) {
+        if (!silent) throw new Error('VAPID public key not set in environment.')
+        return false
       }
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      })
 
       if (!user) return false
 
