@@ -177,13 +177,13 @@ export const CallOverlay = () => {
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{
-          opacity: 1, scale: 1, y: 0,
-          width: isMinimized ? 280 : (isVideo && isActive ? 600 : 340),
-          height: isMinimized ? 80 : (isVideo && isActive ? 460 : 420),
-        }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="fixed bottom-6 right-6 z-[9999] bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
+        className={`fixed z-[9999] bg-[#1a1a1a] overflow-hidden flex flex-col transition-all duration-300 ${
+          isMinimized 
+            ? 'bottom-6 right-6 w-[280px] h-[80px] rounded-full border border-white/10 shadow-2xl bg-[#1a1a1a]/95 backdrop-blur-xl'
+            : 'inset-0 md:inset-auto md:bottom-6 md:right-6 md:w-[420px] md:h-[650px] md:rounded-[2rem] md:border md:border-white/10 md:shadow-2xl'
+        }`}
       >
         {/* Single audio element — always mounted, survives minimize */}
         <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
@@ -192,27 +192,45 @@ export const CallOverlay = () => {
           /* ── Minimized bar ─────────────────────────────────────────────── */
           <div className="flex-1 flex items-center justify-between px-5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#bc9dff] flex items-center justify-center">
-                <User className="w-4 h-4 text-black" />
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#bc9dff] to-[#8b5cf6] flex items-center justify-center">
+                {activeCall?.caller?.avatar ? <img src={activeCall.caller.avatar} className="w-full h-full rounded-full object-cover" /> : <User className="w-5 h-5 text-white" />}
               </div>
               <div>
-                <p className="text-white text-sm font-bold leading-none">{activeCall?.caller?.name || 'User'}</p>
-                <p className="text-[#bc9dff] text-[10px] font-bold uppercase tracking-widest mt-0.5">{fmt(callTime)}</p>
+                <p className="text-white text-sm font-bold leading-none truncate w-24">{activeCall?.caller?.name || 'User'}</p>
+                <p className="text-[#bc9dff] text-[10px] font-bold uppercase tracking-widest mt-1">{fmt(callTime)}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setIsMinimized(false)} className="p-2 text-white/60 hover:text-white">
-                <Maximize2 className="w-4 h-4" />
+            <div className="flex items-center gap-1">
+              <button onClick={() => setIsMinimized(false)} className="p-2 text-white/60 hover:text-white transition-colors">
+                <Maximize2 className="w-5 h-5" />
               </button>
-              <button onClick={endCall} className="p-2 bg-red-500 rounded-full text-white">
+              <button onClick={endCall} className="p-2 bg-red-500 rounded-full text-white shadow-lg shadow-red-500/20">
                 <PhoneOff className="w-4 h-4" />
               </button>
             </div>
           </div>
         ) : (
           <>
+            {/* ── Top Bar ────────────────────────────────────────────────── */}
+            <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-20 bg-gradient-to-b from-black/60 to-transparent">
+              <button onClick={() => setIsMinimized(true)} className="p-2 text-white/80 hover:text-white">
+                <ChevronDown className="w-7 h-7" />
+              </button>
+              <div className="flex flex-col items-center">
+                <span className="text-white font-semibold flex items-center gap-2">
+                  🔒 {activeCall?.caller?.name || 'User'}
+                </span>
+                <span className="text-white/60 text-xs">
+                  {isRinging ? 'Ringing...' : isCalling ? 'Calling...' : fmt(callTime)}
+                </span>
+              </div>
+              <button className="p-2 text-white/80 hover:text-white opacity-0 pointer-events-none">
+                <User className="w-6 h-6" /> {/* Placeholder for layout balance */}
+              </button>
+            </div>
+
             {/* ── Stream / Avatar area ──────────────────────────────────── */}
-            <div className="flex-1 relative bg-black overflow-hidden group">
+            <div className="flex-1 relative bg-[#121212] flex flex-col justify-center items-center">
               {isActive && isVideo ? (
                 <div className="w-full h-full relative">
                   {/* Remote video — full frame */}
@@ -221,122 +239,110 @@ export const CallOverlay = () => {
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
                       <div className="text-center">
-                        <User className="w-16 h-16 text-white/30 mx-auto mb-3" />
+                        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                          <User className="w-8 h-8 text-white/30" />
+                        </div>
                         <p className="text-white/40 text-sm">Connecting video...</p>
                       </div>
                     </div>
                   )}
 
-                  {/* Local video PIP */}
+                  {/* Local video PIP (Top Right) */}
                   {!isVideoOff && (
-                    <div className="absolute top-4 right-4 w-32 aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 shadow-xl">
+                    <motion.div drag dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }} className="absolute top-20 right-4 w-28 md:w-32 aspect-[3/4] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-20">
                       <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               ) : (
                 /* Audio call / ringing / calling view */
-                <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#1a1a1a] to-black">
-                  <div className="relative mb-6">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#bc9dff] to-[#8b5cf6] flex items-center justify-center shadow-lg">
+                <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-b from-[#1a1a1a] to-black">
+                  <div className="relative mb-8">
+                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#bc9dff] to-[#8b5cf6] flex items-center justify-center shadow-[0_0_40px_rgba(188,157,255,0.3)] z-10 relative">
                       {activeCall?.caller?.avatar
                         ? <img src={activeCall.caller.avatar} className="w-full h-full rounded-full object-cover" alt="" />
-                        : <User className="w-12 h-12 text-white" />}
+                        : <User className="w-16 h-16 text-white" />}
                     </div>
+                    {/* Ringing Ripple Effect */}
                     {(isRinging || isCalling) && (
-                      <div className="absolute -inset-4 border-2 border-[#bc9dff]/30 rounded-full animate-ping" />
-                    )}
-                    {isActive && (
-                      <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#22c55e] text-white text-[10px] font-bold rounded-full uppercase tracking-widest">
-                        Connected
-                      </div>
+                      <>
+                        <div className="absolute inset-0 rounded-full border-2 border-[#bc9dff] animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite] opacity-50" />
+                        <div className="absolute inset-[-20px] rounded-full border-2 border-[#bc9dff] animate-[ping_2.5s_cubic-bezier(0,0,0.2,1)_infinite] opacity-30" />
+                      </>
                     )}
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-1">{activeCall?.caller?.name || 'User'}</h3>
-                  <p className="text-xs text-[#bc9dff] font-medium tracking-widest uppercase">
-                    {isRinging ? 'Incoming Call' : isCalling ? 'Calling...' : fmt(callTime)}
+                  <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{activeCall?.caller?.name || 'User'}</h2>
+                  <p className="text-white/50 font-medium">
+                    {isRinging ? 'Incoming Call' : isCalling ? 'Calling...' : `Connected • ${fmt(callTime)}`}
                   </p>
                 </div>
               )}
-
-              {/* Minimize button */}
-              {isActive && (
-                <button
-                  onClick={() => setIsMinimized(true)}
-                  className="absolute top-4 left-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </button>
-              )}
             </div>
 
-            {/* ── Controls ─────────────────────────────────────────────── */}
-            <div className="bg-[#121212]/95 backdrop-blur-md px-6 py-5 border-t border-white/5">
-              {isRinging ? (
-                <div className="flex items-center justify-around">
-                  <button onClick={rejectCall} className="w-14 h-14 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all transform hover:scale-110">
-                    <PhoneOff className="w-6 h-6" />
-                  </button>
-                  <button onClick={acceptCall} className="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg shadow-green-500/20 hover:bg-green-600 transition-all transform hover:scale-110">
-                    <Phone className="w-6 h-6" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-around">
-                  {/* Mute */}
-                  <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                    {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                  </button>
+            {/* ── Controls (Floating over content) ───────────────────────── */}
+            <div className="absolute bottom-8 left-0 right-0 px-6 flex flex-col items-center gap-6 z-30">
+              <div className="bg-[#1a1a1a]/80 backdrop-blur-2xl border border-white/10 p-4 rounded-[2.5rem] flex items-center justify-center gap-6 shadow-2xl">
+                {isRinging ? (
+                  <>
+                    <button onClick={rejectCall} className="w-16 h-16 rounded-full bg-[#ef4444] text-white flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-105 transition-transform">
+                      <PhoneOff className="w-7 h-7" />
+                    </button>
+                    <button onClick={acceptCall} className="w-16 h-16 rounded-full bg-[#22c55e] text-white flex items-center justify-center shadow-[0_0_30px_rgba(34,197,94,0.3)] hover:scale-105 transition-transform animate-bounce">
+                      <Phone className="w-7 h-7" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Speaker */}
+                    <div className="relative">
+                      <button onClick={() => setShowSpeakerMenu(p => !p)} className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
+                        <Volume2 className="w-5 h-5" />
+                      </button>
+                      <AnimatePresence>
+                        {showSpeakerMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            className="absolute bottom-16 -left-1/2 w-48 bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-40"
+                          >
+                            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest px-4 pt-3 pb-1">Audio Output</p>
+                            {speakers.length === 0 ? (
+                              <p className="text-white/30 text-xs px-4 pb-3">Default Speaker</p>
+                            ) : (
+                              speakers.map(s => (
+                                <button
+                                  key={s.deviceId}
+                                  onClick={() => selectSpeaker(s.deviceId)}
+                                  className={`w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-colors ${activeSpeakerId === s.deviceId ? 'text-[#bc9dff] bg-[#bc9dff]/10' : 'text-white/70 hover:bg-white/5'}`}
+                                >
+                                  <Volume2 className="w-4 h-4 shrink-0" />
+                                  <span className="truncate">{s.label || `Speaker ${speakers.indexOf(s) + 1}`}</span>
+                                </button>
+                              ))
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
-                  {/* End call */}
-                  <button onClick={endCall} className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all transform hover:scale-110">
-                    <PhoneOff className="w-6 h-6" />
-                  </button>
-
-                  {/* Video toggle */}
-                  <button onClick={toggleVideo} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isVideoOff ? 'bg-red-500 text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                    {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-                  </button>
-
-                  {/* Speaker selector */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowSpeakerMenu(p => !p)}
-                      className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all"
-                      title="Speaker"
-                    >
-                      <Volume2 className="w-5 h-5" />
+                    {/* Video */}
+                    <button onClick={toggleVideo} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isVideoOff ? 'bg-white/10 text-white/50' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                      {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                     </button>
 
-                    <AnimatePresence>
-                      {showSpeakerMenu && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                          className="absolute bottom-14 right-0 w-56 bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-10"
-                        >
-                          <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest px-4 pt-3 pb-1">Speaker</p>
-                          {speakers.length === 0 ? (
-                            <p className="text-white/30 text-xs px-4 pb-3">No output devices found</p>
-                          ) : (
-                            speakers.map(s => (
-                              <button
-                                key={s.deviceId}
-                                onClick={() => selectSpeaker(s.deviceId)}
-                                className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors ${activeSpeakerId === s.deviceId ? 'text-[#bc9dff] bg-[#bc9dff]/10' : 'text-white/70 hover:bg-white/5'}`}
-                              >
-                                <Volume2 className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">{s.label || `Speaker ${speakers.indexOf(s) + 1}`}</span>
-                              </button>
-                            ))
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              )}
+                    {/* Mute */}
+                    <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isMuted ? 'bg-white/10 text-white/50' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                      {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
+
+                    {/* End Call */}
+                    <button onClick={endCall} className="w-16 h-16 rounded-full bg-[#ef4444] text-white flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-105 transition-transform ml-2">
+                      <PhoneOff className="w-7 h-7" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}
