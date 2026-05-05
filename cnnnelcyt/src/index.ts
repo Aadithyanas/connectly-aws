@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { setIO } from './socket';
+import { setupCallHandlers } from './sockets/call.handler';
 
 dotenv.config();
 
@@ -133,6 +134,9 @@ io.on('connection', (socket) => {
   socket.on('join_notifications', (userId: string) => {
     socket.join(`notifications:${userId}`);
   });
+
+  // Call system
+  setupCallHandlers(io, socket);
 
   socket.on('disconnect', () => {
     console.log('[Socket] User disconnected:', socket.id);

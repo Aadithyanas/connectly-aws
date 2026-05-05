@@ -12,6 +12,8 @@ export const viewport = {
 };
 
 import { AuthProvider } from "@/context/AuthContext";
+import { CallProvider } from "@/context/CallContext";
+import { CallOverlay } from "@/components/calls/CallOverlay";
 import { Toaster } from 'sonner'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 
@@ -29,7 +31,10 @@ export default function RootLayout({
         <Toaster position="top-right" richColors theme="dark" />
         <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "867281605707-1jb8vouiv8119aieto87h1q8ooq1270e.apps.googleusercontent.com"}>
           <AuthProvider>
-            {children}
+            <CallProvider>
+              <CallOverlay />
+              {children}
+            </CallProvider>
           </AuthProvider>
         </GoogleOAuthProvider>
       </body>

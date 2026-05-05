@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/utils/api'
 
-import { MessageSquare, ShieldCheck, Smartphone, Laptop, Search, MoreVertical, ChevronLeft, Users, Settings, Plus, Check, X, Loader2, Lock } from 'lucide-react'
+import { MessageSquare, ShieldCheck, Smartphone, Laptop, Search, MoreVertical, ChevronLeft, Users, Settings, Plus, Check, X, Loader2, Lock, Phone, Video } from 'lucide-react'
+import { toast } from 'sonner'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
 import ForwardModal from './ForwardModal'
@@ -16,6 +17,7 @@ import { socketService } from '@/utils/socket'
 import Image from 'next/image'
 import SettingsModal from './SettingsModal'
 import { useSettings } from '@/hooks/useSettings'
+import { useCall } from '@/context/CallContext'
 
 interface ChatWindowProps {
   chatId?: string
@@ -44,6 +46,7 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
   const [searchQuery, setSearchQuery] = useState('')
 
   const { settings, isLoaded } = useSettings()
+  const { initiateCall } = useCall()
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
   const [isLoadingMembership, setIsLoadingMembership] = useState(true)
 
@@ -265,6 +268,27 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
     }
   }
 
+  const handleStartCall = (type: 'audio' | 'video') => {
+    if (!chatId) return;
+
+    const isGroup = chatDetails?.is_group;
+    // Permission Logic:
+    // 1. Group calls are ALWAYS direct.
+    // 2. Professional to Student is ALWAYS direct.
+    // 3. Everything else is a request.
+    const isDirect = isGroup || (currentUserProfile?.role === 'professional' && otherUser?.role === 'student');
+
+    initiateCall(
+      isGroup ? chatId : otherUser?.id, 
+      type, 
+      isGroup
+    );
+    
+    if (!isDirect) {
+      toast.info('Sending call request...');
+    }
+  }
+
   const headerDisplay = chatDetails?.is_group ? {
     name: chatDetails.name,
     avatar: chatDetails.avatar_url,
@@ -368,6 +392,20 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
           </div>
         </div>
         <div className="flex items-center gap-1 px-1">
+          <button 
+            onClick={(e) => { e.stopPropagation(); handleStartCall('audio'); }}
+            className="p-2 text-[#adaaaa] hover:text-[#bc9dff] transition-colors"
+            title="Voice Call"
+          >
+            <Phone className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); handleStartCall('video'); }}
+            className="p-2 text-[#adaaaa] hover:text-[#bc9dff] transition-colors"
+            title="Video Call"
+          >
+            <Video className="w-4 h-4" />
+          </button>
           {headerDisplay.isGroup && myMembership?.role === 'admin' && (
             <button 
               onClick={(e) => { e.stopPropagation(); setShowGroupSettings(true); }}
