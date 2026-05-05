@@ -76,6 +76,8 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       noiseSuppression: true,
       autoGainControl: true,
       sampleRate: 48000,
+      channelCount: 1,      // mono = lower latency
+      latency: 0,           // request minimum buffer latency
     };
     if (!isVideo) return { audio: audioConstraints, video: false };
     return {
@@ -87,6 +89,19 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
         facingMode: 'user',
       },
     };
+  };
+
+  // Get media with fallback: try video first, fallback to audio-only
+  const getMediaWithFallback = async (isVideo: boolean): Promise<MediaStream> => {
+    try {
+      return await navigator.mediaDevices.getUserMedia(getMediaConstraints(isVideo));
+    } catch (err: any) {
+      if (isVideo && (err.name === 'NotFoundError' || err.name === 'NotReadableError' || err.name === 'OverconstrainedError')) {
+        console.warn('[Call] Video device failed, falling back to audio-only');
+        return await navigator.mediaDevices.getUserMedia(getMediaConstraints(false));
+      }
+      throw err;
+    }
   };
 
   const clearIceRecovery = () => {
@@ -208,14 +223,15 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       const isVideo = activeCallRef.current?.type === 'video';
       console.log('[Call] startSignaling isCaller:', isCaller, 'video:', isVideo);
 
-      const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(isVideo));
+      const stream = await getMediaWithFallback(isVideo);
       setLocalStream(stream);
 
       const pc = createPeerConnection(targetSocketId);
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
       if (isCaller) {
-        const offer = await pc.createOffer();
+        // voiceActivityDetection:false prevents first-syllable cutoff
+        const offer = await pc.createOffer({ voiceActivityDetection: false });
         await pc.setLocalDescription(offer);
         socket.emit('call:signal', { to: targetSocketId, signal: offer });
         console.log('[Call] Offer sent to', targetSocketId);
@@ -228,22 +244,28 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
   }, [createPeerConnection, handleEndCall]);
 
   // ─── Callee: receive offer → send answer ──────────────────────────────────
+  // IMPORTANT: get media FIRST so video tracks exist before creating the answer
   const handleOffer = useCallback(async (offer: any, fromSocketId: string) => {
     const socket = socketService.getSocket();
     try {
       const isVideo = activeCallRef.current?.type === 'video';
-      console.log('[Call] Handling offer from', fromSocketId);
+      console.log('[Call] Handling offer from', fromSocketId, 'isVideo:', isVideo);
 
+      // 1. Get media BEFORE creating PC — ensures video m-line in answer
+      const stream = await getMediaWithFallback(isVideo);
+      setLocalStream(stream);
+
+      // 2. Create PC and set remote description
       const pc = createPeerConnection(fromSocketId);
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       hasRemoteDesc.current = true;
       await drainQueue();
 
-      const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(isVideo));
-      setLocalStream(stream);
+      // 3. Add local tracks (after remote desc to avoid onnegotiationneeded race)
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const answer = await pc.createAnswer();
+      // 4. Create and send answer
+      const answer = await pc.createAnswer({ voiceActivityDetection: false });
       await pc.setLocalDescription(answer);
       socket.emit('call:signal', { to: fromSocketId, signal: answer });
       console.log('[Call] Answer sent to', fromSocketId);
