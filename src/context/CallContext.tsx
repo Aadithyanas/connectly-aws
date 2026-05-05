@@ -47,6 +47,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
       // Open Relay TURN — covers symmetric NAT, mobile networks, corporate WiFi
       {
         urls: 'turn:openrelay.metered.ca:80',
@@ -174,7 +175,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         clearIceRecovery();
       } else if (pc.iceConnectionState === 'disconnected') {
-        // Give it 8 s to self-heal (NAT rebind, mobile handoff, etc.)
+        // Give it 12 s to self-heal (NAT rebind, mobile handoff, etc.)
         clearIceRecovery();
         iceRecoveryTimer.current = setTimeout(() => {
           const state = peerConnection.current?.iceConnectionState;
@@ -182,7 +183,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
             toast.error('Call connection lost');
             endCall(); // Notify other side
           }
-        }, 8000);
+        }, 12000);
       } else if (pc.iceConnectionState === 'failed') {
         clearIceRecovery();
         toast.error('Call connection failed');
