@@ -439,7 +439,7 @@ export const CallProvider = ({ children }: { children: React.ReactNode }) => {
     setActiveCall({ caller: { name: targetName }, type, targetUserId: to, isIncoming: false });
     socket.emit('call:initiate', {
       to, type, isGroup,
-      callerInfo: { name: user?.name || user?.email || 'Someone', role: 'student' },
+      callerInfo: { id: user?.id, name: user?.name || user?.email || 'Someone', role: 'student', avatar: user?.user_metadata?.avatar_url },
     });
   }, [user]);
 

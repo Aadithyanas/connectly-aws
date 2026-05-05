@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { sendPushNotification } from '../utils/push';
 import { query } from '../db';
+import { getIO } from '../socket';
 
 // Track active call pairs: socketId -> partnerSocketId
 const activeCallPairs = new Map<string, string>();
@@ -8,16 +9,66 @@ const activeCallPairs = new Map<string, string>();
 // Track pending calls: userId -> call data (so we can re-emit when user reconnects)
 const pendingCalls = new Map<string, {
   from: string,
-  caller: { name: string, avatar?: string, role: string },
+  caller: { id?: string, name: string, avatar?: string, role: string },
   type: 'audio' | 'video',
-  timestamp: number
+  timestamp: number,
+  isGroup: boolean
 }>();
+
+// Helper to record missed calls in the database and broadcast to chat
+async function recordMissedCall(userId: string, call: any) {
+  if (!call.caller?.id) return; // Need DB id of the caller
+
+  let chatId = userId;
+  if (!call.isGroup) {
+    try {
+      // Find the 1:1 chat between caller and callee
+      const res = await query(`
+        SELECT c1.chat_id 
+        FROM chat_members c1 
+        JOIN chat_members c2 ON c1.chat_id = c2.chat_id 
+        JOIN chats c ON c.id = c1.chat_id
+        WHERE c1.user_id = $1 AND c2.user_id = $2 AND c.is_group = false
+        LIMIT 1
+      `, [call.caller.id, userId]);
+      if (res.rows.length) {
+        chatId = res.rows[0].chat_id;
+      } else {
+        return; // Chat not found
+      }
+    } catch (e) {
+      console.error('[Call] Error finding chat for missed call:', e);
+      return;
+    }
+  }
+
+  const content = call.type === 'video' ? '📹 Missed video call' : '📞 Missed audio call';
+
+  try {
+    const msgRes = await query(
+      `INSERT INTO messages (chat_id, sender_id, content, media_type) VALUES ($1, $2, $3, 'system') RETURNING *`,
+      [chatId, call.caller.id, content]
+    );
+    const msg = msgRes.rows[0];
+
+    msg.sender = { name: call.caller.name, avatar_url: call.caller.avatar };
+
+    const io = getIO();
+    if (io) {
+      io.to(`chat:${chatId}`).emit('new_message', { ...msg, status: 'sent' });
+    }
+  } catch (e) {
+    console.error('[Call] Error recording missed call:', e);
+  }
+}
 
 // Clean up expired pending calls (older than 45 seconds)
 setInterval(() => {
   const now = Date.now();
   for (const [userId, call] of pendingCalls.entries()) {
     if (now - call.timestamp > 45000) {
+      console.log(`[Call] Pending call timed out for user ${userId}, recording missed call`);
+      recordMissedCall(userId, call);
       pendingCalls.delete(userId);
     }
   }
@@ -45,7 +96,7 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
     to: string, 
     type: 'audio' | 'video',
     isGroup: boolean,
-    callerInfo: { name: string, avatar?: string, role: string }
+    callerInfo: { id?: string, name: string, avatar?: string, role: string }
   }) => {
     const { to, callerInfo, isGroup } = data;
     console.log(`[Call] Initiate request from ${socket.id} to user ${to} (isGroup: ${isGroup})`);
@@ -62,8 +113,8 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       // Send push notifications to all group members
       try {
         const membersResult = await query(
-          'SELECT user_id FROM chat_members WHERE chat_id = $1',
-          [to]
+          'SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id != $2',
+          [to, callerInfo.id]
         );
         for (const row of membersResult.rows) {
           sendPushNotification(row.user_id, {
@@ -85,7 +136,8 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
       from: socket.id,
       caller: callerInfo,
       type: data.type,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isGroup
     });
 
     // Emit to the target user's presence room
@@ -110,11 +162,10 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
   socket.on('call:request-response', (data: { to: string, accepted: boolean }) => {
     console.log(`[Call] Request response from ${socket.id} to ${data.to}: ${data.accepted ? 'ACCEPTED' : 'REJECTED'}`);
     
-    // Clear pending call for this user
-    // Find and delete the pending call where the caller socket matches
+    // Clear pending call for this user, because they responded!
     for (const [userId, call] of pendingCalls.entries()) {
       if (call.from === data.to) {
-        pendingCalls.delete(userId);
+        pendingCalls.delete(userId); // They answered or rejected, NOT a missed call.
         break;
       }
     }
@@ -148,9 +199,12 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
     activeCallPairs.delete(socket.id);
     activeCallPairs.delete(data.to);
 
-    // Also clear any pending call from this caller
+    // If caller explicitly hung up before callee answered (still in pendingCalls)
+    // -> Treat as missed call.
     for (const [userId, call] of pendingCalls.entries()) {
       if (call.from === socket.id || call.from === data.to) {
+        console.log(`[Call] Caller hung up, recording missed call for ${userId}`);
+        recordMissedCall(userId, call);
         pendingCalls.delete(userId);
       }
     }
@@ -169,7 +223,8 @@ export const setupCallHandlers = (io: Server, socket: Socket) => {
     // Clear any pending calls FROM this caller (they hung up/disconnected)
     for (const [userId, call] of pendingCalls.entries()) {
       if (call.from === socket.id) {
-        console.log(`[Call] Clearing pending call from disconnected caller ${socket.id} to ${userId}`);
+        console.log(`[Call] Disconnected caller, recording missed call for ${userId}`);
+        recordMissedCall(userId, call);
         pendingCalls.delete(userId);
       }
     }
