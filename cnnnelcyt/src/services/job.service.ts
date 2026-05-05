@@ -39,18 +39,29 @@ export const fetchExternalJobs = async (query: string = '', location: string = '
     const data = await response.json();
     
     return data.results.map((job: any) => {
-      const url = job.redirect_url.toLowerCase();
-      let platform = 'External';
+      const urlString = job.redirect_url.toLowerCase();
+      let platform = '';
       
-      if (url.includes('linkedin')) platform = 'LinkedIn';
-      else if (url.includes('glassdoor')) platform = 'Glassdoor';
-      else if (url.includes('indeed')) platform = 'Indeed';
-      else if (url.includes('simplyhired')) platform = 'SimplyHired';
-      else if (url.includes('monster')) platform = 'Monster';
-      else if (url.includes('ziprecruiter')) platform = 'ZipRecruiter';
-      else if (url.includes('naukri')) platform = 'Naukri';
+      // 1. Check for common "Big" platforms
+      if (urlString.includes('linkedin')) platform = 'LinkedIn';
+      else if (urlString.includes('glassdoor')) platform = 'Glassdoor';
+      else if (urlString.includes('indeed')) platform = 'Indeed';
+      else if (urlString.includes('naukri')) platform = 'Naukri';
+      else if (urlString.includes('simplyhired')) platform = 'SimplyHired';
+      else if (urlString.includes('monster')) platform = 'Monster';
+      else if (urlString.includes('ziprecruiter')) platform = 'ZipRecruiter';
+      else if (urlString.includes('shine')) platform = 'Shine';
+      else if (urlString.includes('timesjobs')) platform = 'TimesJobs';
       
-      return {
+      // 2. If unknown, extract the domain name (e.g. "google.com" -> "Google")
+      if (!platform) {
+        try {
+          const domain = new URL(job.redirect_url).hostname.replace('www.', '').split('.')[0];
+          platform = domain.charAt(0).toUpperCase() + domain.slice(1);
+        } catch (e) {
+          platform = 'External';
+        }
+      }
         id: `ext-${job.id}`,
         title: job.title,
         company_name: job.company.display_name,
