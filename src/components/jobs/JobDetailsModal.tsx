@@ -63,11 +63,22 @@ export default function JobDetailsModal({ job, onClose }: JobDetailsModalProps) 
             <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-12">
               <div className="space-y-6">
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
                     <h2 className="text-3xl font-black text-white leading-tight">{job.title}</h2>
-                    <span className="px-3 py-1 rounded-full bg-[#bc9dff]/10 text-[#bc9dff] text-xs font-bold uppercase tracking-wider">
-                      {job.job_type}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {job.source_platform && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                          job.source_platform === 'Connectly' 
+                            ? 'bg-[#bc9dff]/10 text-[#bc9dff]' 
+                            : 'bg-emerald-500/10 text-emerald-400'
+                        }`}>
+                          {job.source_platform}
+                        </span>
+                      )}
+                      <span className="px-3 py-1 rounded-full bg-white/5 text-zinc-400 text-xs font-bold uppercase tracking-wider">
+                        {job.job_type}
+                      </span>
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-4 text-zinc-400 font-medium">

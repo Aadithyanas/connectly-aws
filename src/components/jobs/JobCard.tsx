@@ -15,6 +15,7 @@ export interface Job {
   apply_link: string
   salary_range?: string
   created_at: string
+  source_platform?: string
 }
 
 interface JobCardProps {
@@ -55,9 +56,20 @@ export default function JobCard({ job, onClick }: JobCardProps) {
             <h3 className="text-lg font-bold text-white truncate group-hover:text-[#bc9dff] transition-colors">
               {job.title}
             </h3>
-            <span className="px-2 py-0.5 rounded-full bg-[#bc9dff]/10 text-[#bc9dff] text-[10px] font-bold uppercase tracking-wider">
-              {job.job_type}
-            </span>
+            <div className="flex items-center gap-2">
+              {job.source_platform && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  job.source_platform === 'Connectly' 
+                    ? 'bg-[#bc9dff]/10 text-[#bc9dff]' 
+                    : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
+                  {job.source_platform}
+                </span>
+              )}
+              <span className="px-2 py-0.5 rounded-full bg-white/5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
+                {job.job_type}
+              </span>
+            </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-y-1 gap-x-3 mt-1 text-zinc-400 text-sm">

@@ -2,11 +2,14 @@ import { Request, Response } from 'express';
 import { query } from '../db';
 import { getIO } from '../socket';
 
+import { fetchExternalJobs } from '../services/job.service';
+
 // GET /api/jobs
 export const getJobs = async (req: Request, res: Response): Promise<void> => {
   const { title, location, company, limit = 20, offset = 0 } = req.query;
   
   try {
+    // 1. Fetch Internal Jobs from DB
     let queryText = `
       SELECT j.*, p.name as poster_name, p.avatar_url as poster_avatar, p.role as poster_role
       FROM jobs j
@@ -31,10 +34,28 @@ export const getJobs = async (req: Request, res: Response): Promise<void> => {
     }
     
     queryText += ` ORDER BY j.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
+    const limitNum = Number(limit);
+    const offsetNum = Number(offset);
+    params.push(limitNum, offsetNum);
     
-    const result = await query(queryText, params);
-    res.status(200).json(result.rows);
+    const internalResult = await query(queryText, params);
+    const internalJobs = internalResult.rows.map(job => ({
+      ...job,
+      source_platform: 'Connectly'
+    }));
+
+    // 2. Fetch External Jobs (Only if on the first page/offset 0 to avoid duplicates or overload)
+    let externalJobs: any[] = [];
+    if (offsetNum === 0) {
+      externalJobs = await fetchExternalJobs(title as string, location as string);
+    }
+
+    // 3. Merge and Sort
+    const allJobs = [...internalJobs, ...externalJobs].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    res.status(200).json(allJobs);
   } catch (error) {
     console.error('[getJobs]', error);
     res.status(500).json({ error: 'Server error' });
