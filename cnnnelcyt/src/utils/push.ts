@@ -38,8 +38,9 @@ export const sendPushNotification = async (userId: string, payload: any) => {
         await webpush.sendNotification(pushSubscription, JSON.stringify(payload));
         console.log(`[Web Push] Successfully sent notification to endpoint: ${sub.endpoint.substring(0, 30)}...`);
       } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          console.log(`[Web Push] Subscription expired, deleting: ${sub.endpoint.substring(0, 30)}...`);
+        if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
+          // 410/404 = expired, 403 = VAPID key mismatch (subscription created with different key)
+          console.log(`[Web Push] Subscription invalid (${err.statusCode}), deleting: ${sub.endpoint.substring(0, 30)}...`);
           await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
         } else {
           console.error('[Web Push] Error sending notification:', err);
