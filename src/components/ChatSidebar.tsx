@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { api } from '@/utils/api'
 import { socketService } from '@/utils/socket'
 
-import { Search, UserCircle, Home, Plus, Compass, CircleDashed, Trophy, Users, Globe, Briefcase } from 'lucide-react'
+import { Search, UserCircle, Home, Plus, Compass, CircleDashed, Trophy, Users, Globe, Briefcase, Settings } from 'lucide-react'
 import Image from 'next/image'
 import { isUserOnline } from '@/hooks/useOnlineStatus'
 
@@ -566,6 +566,13 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
               <Plus className="w-4 h-4" />
             </button>
             <button 
+              onClick={onOpenSettings}
+              className="p-2 rounded-full text-zinc-500 hover:text-white hover:bg-white/10 transition-all duration-300"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button 
               onClick={() => onTabChange('feed')}
               className={`p-2 rounded-full transition-all duration-300 ${activeTab === 'feed' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/10'}`}
               title="Discovery Feed"
@@ -788,8 +795,14 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
         )}
       </div>
 
-      {/* Floating Action Button for New Chat (Mobile) */}
-      <div className={`absolute bottom-24 right-5 z-[90] md:hidden transition-all duration-300 ${isModalOpen ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}`}>
+      {/* Floating Action Buttons (Mobile) */}
+      <div className={`absolute bottom-24 right-5 z-[90] md:hidden flex flex-col gap-4 transition-all duration-300 ${isModalOpen ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <button
+          onClick={onOpenSettings}
+          className="w-12 h-12 bg-[#1e1e1e] rounded-full flex items-center justify-center shadow-[0_8px_32px_rgba(0,0,0,0.6)] border border-white/[0.08] hover:bg-[#2a2a2a] hover:scale-105 active:scale-95 transition-all text-white self-end"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
         <button
           onClick={onOpenNewChat}
           className="w-14 h-14 bg-[#1e1e1e] rounded-full flex items-center justify-center shadow-[0_8px_32px_rgba(0,0,0,0.6)] border border-white/[0.08] hover:bg-[#2a2a2a] hover:scale-105 active:scale-95 transition-all text-white"
