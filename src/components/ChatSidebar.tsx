@@ -134,11 +134,16 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
       
       setChats(formattedChats)
 
-      // Seed online status from fresh API data
+      // Seed online status from fresh API data (only if actually active recently)
       const freshOnlineIds = new Set<string>()
+      const nowTime = new Date().getTime()
       formattedChats.forEach((c: any) => {
         if (c.other_profile && c.other_profile.status === 'online') {
-          freshOnlineIds.add(c.other_profile.id)
+          // If the DB says online, double check last_seen is within the last 5 minutes
+          const lastSeenTime = c.other_profile.last_seen ? new Date(c.other_profile.last_seen).getTime() : 0
+          if (nowTime - lastSeenTime < 5 * 60 * 1000) {
+            freshOnlineIds.add(c.other_profile.id)
+          }
         }
       })
       if (freshOnlineIds.size > 0) {
@@ -750,7 +755,7 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
                         </div>
                       )}
                     </div>
-                    {chat.other_profile && !chat.is_group && (onlineUserIds.has(chat.other_profile.id) || chat.other_profile.status === 'online') && chat.other_profile?.availability_status !== false && (
+                    {chat.other_profile && !chat.is_group && onlineUserIds.has(chat.other_profile.id) && !(chat.other_profile.role === 'professional' && chat.other_profile.availability_status === false) && (
                       <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#22c55e] rounded-full border-2 border-[#0e0e0e] shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
                     )}
                   </div>

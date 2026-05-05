@@ -245,6 +245,8 @@ export const CallOverlay = () => {
                 </>
               )}
             </div>
+            {/* Hidden audio element for remote audio track */}
+            <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
           </>
         )}
       </motion.div>
