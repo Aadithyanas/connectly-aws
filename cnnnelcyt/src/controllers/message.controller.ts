@@ -63,13 +63,9 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
             title: msg.sender?.name || 'New Message',
             body: content ? content.substring(0, 50) + (content.length > 50 ? '...' : '') : 'Sent a media file',
             type: 'message',
-            url: `/chat/${chat_id}`
-          }).then(() => {
-            // If push is successful, it means it was delivered to the device's OS!
-            // Instantly tell the sender it was delivered (double tick)
-            if (io) {
-              io.to(`chat:${chat_id}`).emit('chat_read', { chatId: chat_id, readerId: row.user_id, status: 'delivered' });
-            }
+            url: `/chat/${chat_id}`,
+            messageId: msg.id,
+            chatId: chat_id
           }).catch(err => console.error('[Push] error:', err));
         }
       } catch (bgErr) {
@@ -78,6 +74,40 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
     })();
   } catch (error) {
     console.error(error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Webhook called by Service Worker when a push notification is actually received by the device!
+export const markDeliveredWebhook = async (req: Request, res: Response): Promise<void> => {
+  const { messageId, chatId } = req.body;
+  if (!messageId || !chatId) {
+    res.status(400).json({ error: 'Missing messageId or chatId' });
+    return;
+  }
+
+  try {
+    const result = await query(
+      `UPDATE messages 
+       SET status = 'delivered' 
+       WHERE id = $1 AND (status = 'sending' OR status = 'sent') 
+       RETURNING sender_id`,
+      [messageId]
+    );
+
+    if (result.rows.length > 0) {
+      // It was successfully updated! Now broadcast to the chat so the sender gets the double tick.
+      const senderId = result.rows[0].sender_id;
+      const io = getIO();
+      if (io) {
+        // Broadcast the delivery receipt to the sender
+        io.to(`chat:${chatId}`).emit('chat_read', { chatId, readerId: senderId /* we just need any reader id to trigger the tick for the sender */, status: 'delivered' });
+      }
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[Webhook] Error marking delivered:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

@@ -37,9 +37,25 @@ self.addEventListener('push', function(event) {
     options.body = `📞 ${data.caller?.name || 'Someone'} is calling you...`;
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Connectly', options)
-  );
+  // Create a promise to show the notification
+  const showNotificationPromise = self.registration.showNotification(data.title || 'Connectly', options);
+
+  // Create a promise to tell the server the message was actually received by the device
+  let reportDeliveryPromise = Promise.resolve();
+  if (data.messageId && data.chatId) {
+    const apiUrl = self.location.hostname === 'localhost' 
+      ? 'http://localhost:5000/api' 
+      : 'https://api.aadithyan.in/api';
+      
+    reportDeliveryPromise = fetch(`${apiUrl}/messages/webhook/delivered`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId: data.messageId, chatId: data.chatId })
+    }).catch(err => console.error('[SW] Webhook failed', err));
+  }
+
+  // Wait for both
+  event.waitUntil(Promise.all([showNotificationPromise, reportDeliveryPromise]));
 });
 
 self.addEventListener('notificationclick', function(event) {
