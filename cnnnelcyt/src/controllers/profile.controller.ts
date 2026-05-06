@@ -36,20 +36,62 @@ export const updateStatus = async (req: any, res: Response): Promise<void> => {
 export const getUserXP = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   try {
-    // Try to join with challenges table for accurate points, 
-    // but fallback to just counting solutions if the table is missing
-    const result = await query(
-      `SELECT 
-        COUNT(cs.challenge_id) as solved_count,
-        COALESCE(SUM(cs.points), 0) as total_xp
+    // 1. Challenge Points
+    const challengeResult = await query(
+      `SELECT COUNT(cs.challenge_id) as solved_count, COALESCE(SUM(cs.points), 0) as total_xp
        FROM challenge_solutions cs
        WHERE cs.user_id = $1`,
       [id]
     );
-    const row = result.rows[0];
+    const challengePoints = parseInt(challengeResult.rows[0]?.total_xp, 10) || 0;
+    const solvedCount = parseInt(challengeResult.rows[0]?.solved_count, 10) || 0;
+
+    // 2. Profile Completion Points (10 pts per filled field)
+    const profileResult = await query(`SELECT * FROM profiles WHERE id = $1`, [id]);
+    let profilePoints = 0;
+    if (profileResult.rows.length > 0) {
+      const p = profileResult.rows[0];
+      const fields = [
+        p.bio, p.college_name, p.course, p.job_role, 
+        p.experience, p.education, p.skills, p.resume_url, 
+        p.linkedin, p.github, p.portfolio
+      ];
+      
+      fields.forEach(field => {
+        // For strings or JSON arrays
+        if (field && (typeof field === 'string' ? field.trim().length > 0 : true)) {
+          // If it's a JSON string array like "[]", don't count it
+          if (typeof field === 'string' && (field === '[]' || field === '{}')) return;
+          profilePoints += 10;
+        }
+      });
+      // 10 bonus points for having an actual avatar
+      if (p.avatar_url && !p.avatar_url.includes('ui-avatars')) {
+        profilePoints += 10;
+      }
+    }
+
+    // 3. Post Creation Points (10 pts per post)
+    const postsResult = await query(`SELECT COUNT(*) as count FROM posts WHERE author_id = $1`, [id]);
+    const postsCount = parseInt(postsResult.rows[0]?.count, 10) || 0;
+    const postPoints = postsCount * 10;
+
+    // 4. Follower Points (5 pts per follower)
+    const followersResult = await query(`SELECT COUNT(*) as count FROM connections WHERE following_id = $1`, [id]);
+    const followersCount = parseInt(followersResult.rows[0]?.count, 10) || 0;
+    const followerPoints = followersCount * 5;
+
+    const totalXP = challengePoints + profilePoints + postPoints + followerPoints;
+
     res.status(200).json({
-      xp: parseInt(row?.total_xp, 10) || 0,
-      solved: parseInt(row?.solved_count, 10) || 0,
+      xp: totalXP,
+      solved: solvedCount,
+      breakdown: {
+        challenges: challengePoints,
+        profile: profilePoints,
+        posts: postPoints,
+        followers: followerPoints
+      }
     });
   } catch (error) {
     console.error('[getUserXP]', error);
