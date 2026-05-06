@@ -35,29 +35,47 @@ export const sendMessage = async (req: any, res: Response): Promise<void> => {
         msg.reply = replyResult.rows[0];
       }
     }
+    // 1. Send response immediately so sender gets single tick instantly!
+    res.status(201).json({ ...msg, status: 'sent' });
 
-    // Server-side broadcast — ensures delivery even if client socket emit fails
-    const io = getIO();
-    if (io) {
-      // Broadcast to all in the room
-      io.to(`chat:${chat_id}`).emit('new_message', { ...msg, status: 'sent' });
-    }
+    // 2. Do the heavy lifting (broadcasting, push notifications, DB queries) in the background
+    (async () => {
+      try {
+        const io = getIO();
+        if (io) {
+          // Broadcast to all in the room
+          io.to(`chat:${chat_id}`).emit('new_message', { ...msg, status: 'sent' });
+        }
 
-    // Notify all other members in the chat via Push Notification
-    const membersResult = await query(
-      `SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id != $2`,
-      [chat_id, userId]
-    );
-    for (const row of membersResult.rows) {
-      sendPushNotification(row.user_id, {
-        title: msg.sender.name || 'New Message',
-        body: content ? content.substring(0, 50) + (content.length > 50 ? '...' : '') : 'Sent a media file',
-        type: 'message',
-        url: `/chat/${chat_id}`
-      }).catch(err => console.error('[Push] error:', err));
-    }
-
-    res.status(201).json(msg);
+        // Notify all other members in the chat via Push Notification
+        const membersResult = await query(
+          `SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id != $2`,
+          [chat_id, userId]
+        );
+        
+        for (const row of membersResult.rows) {
+          if (io) {
+            // Emit to global presence room so even if they are not in chat, they can send 'delivered' back instantly
+            io.to(`notifications:${row.user_id}`).emit('global_new_message', { ...msg, status: 'sent' });
+          }
+          
+          sendPushNotification(row.user_id, {
+            title: msg.sender?.name || 'New Message',
+            body: content ? content.substring(0, 50) + (content.length > 50 ? '...' : '') : 'Sent a media file',
+            type: 'message',
+            url: `/chat/${chat_id}`
+          }).then(() => {
+            // If push is successful, it means it was delivered to the device's OS!
+            // Instantly tell the sender it was delivered (double tick)
+            if (io) {
+              io.to(`chat:${chat_id}`).emit('chat_read', { chatId: chat_id, readerId: row.user_id, status: 'delivered' });
+            }
+          }).catch(err => console.error('[Push] error:', err));
+        }
+      } catch (bgErr) {
+        console.error('[Background Task Error] Failed to broadcast message:', bgErr);
+      }
+    })();
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error' });

@@ -48,6 +48,22 @@ export function useNotify(onNotify: (payload: any) => void) {
       socket.on('notification', (payload: any) => {
         if (isMounted) callbackRef.current(payload)
       })
+
+      // Listen for all messages globally so we can send instant "delivered" receipts
+      socket.on('global_new_message', (payload: any) => {
+        if (!isMounted) return;
+        
+        // As long as the phone receives this, it's considered "delivered"!
+        // This is what makes the double tick instant like WhatsApp.
+        socket.emit('chat_read', { 
+          chatId: payload.chat_id, 
+          readerId: user.id, 
+          status: 'delivered' 
+        });
+
+        // Pass to UI for badge counts / toasts
+        callbackRef.current({ type: 'message', ...payload })
+      })
     })
 
     return () => {

@@ -123,9 +123,24 @@ io.on('connection', (socket) => {
   });
 
   // Read receipts
-  socket.on('chat_read', (payload: any) => {
+  socket.on('chat_read', async (payload: any) => {
     const roomId = payload.chatId || payload.chat_id;
+    const { readerId, status } = payload;
     if (roomId) {
+      if (readerId && status) {
+        // Update DB so the status persists across page reloads!
+        try {
+          const { query } = require('./db');
+          await query(
+            `UPDATE messages 
+             SET status = $1 
+             WHERE chat_id = $2 AND sender_id != $3 AND (status = 'sending' OR status = 'sent' OR (status = 'delivered' AND $1 = 'seen'))`,
+            [status, roomId, readerId]
+          );
+        } catch (e) {
+          console.error('[Socket] Failed to update chat_read status in DB:', e);
+        }
+      }
       socket.to(`chat:${roomId}`).emit('chat_read', payload);
     }
   });
