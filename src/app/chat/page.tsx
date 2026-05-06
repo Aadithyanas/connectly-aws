@@ -37,8 +37,36 @@ export default function ChatPage() {
   const [feedFilterUserId, setFeedFilterUserId] = useState<string | undefined>(undefined)
   const [activeStatuses, setActiveStatuses] = useState<Status[] | null>(null)
   const [isNavVisible, setIsNavVisible] = useState(true)
+  const [isRestored, setIsRestored] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isInternalScrollRef = useRef(false)
+
+  // Restore state from localStorage
+  useEffect(() => {
+    const savedTab = localStorage.getItem('connectly_activeTab')
+    if (savedTab) setActiveTab(savedTab as any)
+
+    const savedChat = localStorage.getItem('connectly_activeChat')
+    if (savedChat) {
+      try { setActiveChatSession(JSON.parse(savedChat)) } catch (e) {}
+    }
+    setIsRestored(true)
+  }, [])
+
+  // Save state to localStorage
+  useEffect(() => {
+    if (!isRestored) return
+    localStorage.setItem('connectly_activeTab', activeTab)
+  }, [activeTab, isRestored])
+
+  useEffect(() => {
+    if (!isRestored) return
+    if (activeChatSession) {
+      localStorage.setItem('connectly_activeChat', JSON.stringify(activeChatSession))
+    } else {
+      localStorage.removeItem('connectly_activeChat')
+    }
+  }, [activeChatSession, isRestored])
 
   // Use a ref for the current activeTab so the observer doesn't need to rebuild on every tab change
   const activeTabRef = useRef(activeTab)
@@ -87,13 +115,18 @@ export default function ChatPage() {
     }
   }, [profile, isInfoSidebarOpen, sidebarType])
 
-  // Initial state is Feed at index 0, so no complex initial scroll is needed.
+  // Scroll to active tab on mount for mobile
   useEffect(() => {
+    if (!isRestored) return
     if (window.innerWidth < 768 && scrollContainerRef.current) {
-      // We are already at index 0 (Feed), but we can ensure it's clean
-      scrollContainerRef.current.scrollTo({ left: 0 })
+      const tabs = ['feed', 'chat', 'groups', 'initiative', 'jobs', 'challenges']
+      const index = tabs.indexOf(activeTab)
+      if (index !== -1) {
+        isInternalScrollRef.current = true
+        scrollContainerRef.current.scrollTo({ left: index * scrollContainerRef.current.offsetWidth })
+      }
     }
-  }, [])
+  }, [isRestored])
 
   useEffect(() => {
     if (!currentUser) return

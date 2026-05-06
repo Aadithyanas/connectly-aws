@@ -234,7 +234,9 @@ export default function ChatSidebar({ onSelectChat, activeChatId, onOpenNewChat,
           const parsed = JSON.parse(cached)
           if (Array.isArray(parsed) && parsed.length > 0) {
             // Check if at least one group has cover_url field (even if null) to verify schema version
-            const hasNewSchema = parsed.some(c => c.is_group && 'cover_url' in c)
+            // If there are no groups, we also consider it valid.
+            const hasGroups = parsed.some(c => c.is_group)
+            const hasNewSchema = !hasGroups || parsed.some(c => c.is_group && 'cover_url' in c)
             if (hasNewSchema) {
               setChats(parsed)
               setLoading(false)

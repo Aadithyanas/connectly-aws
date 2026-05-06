@@ -63,6 +63,16 @@ export default function MessageInput({ onSendMessage, onTyping, onFileUpload, re
     }
   }, [showAttachmentMenu])
 
+  useEffect(() => {
+    // Auto-focus input when chat is opened
+    if (inputRef.current) {
+      // Small timeout ensures modal/animations finish before focusing on mobile to prevent layout jumps
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+    }
+  }, [])
+
   const handleSend = async () => {
     if (!content.trim() && !isUploading) return
     const text = content

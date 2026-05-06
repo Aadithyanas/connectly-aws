@@ -96,7 +96,7 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
 
       // Restore membership from cache
       const cachedMembership = localStorage.getItem(`membership_${chatId}`)
-      if (cachedMembership) {
+      if (cachedMembership && isKnownGroup) {
         try {
           setMyMembership(JSON.parse(cachedMembership))
           setIsLoadingMembership(false)
@@ -104,7 +104,8 @@ export default function ChatWindow({ chatId, initialData, onOpenInfo, onBack }: 
           setIsLoadingMembership(true)
         }
       } else {
-        setIsLoadingMembership(true)
+        // If it's a DM, we don't need to wait for membership
+        setIsLoadingMembership(isKnownGroup)
       }
 
       if (!isKnownGroup) {
