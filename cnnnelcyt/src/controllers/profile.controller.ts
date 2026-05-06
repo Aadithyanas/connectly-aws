@@ -72,12 +72,12 @@ export const getUserXP = async (req: Request, res: Response): Promise<void> => {
     }
 
     // 3. Post Creation Points (10 pts per post)
-    const postsResult = await query(`SELECT COUNT(*) as count FROM posts WHERE author_id = $1`, [id]);
+    const postsResult = await query(`SELECT COUNT(*) as count FROM posts WHERE user_id = $1`, [id]);
     const postsCount = parseInt(postsResult.rows[0]?.count, 10) || 0;
     const postPoints = postsCount * 10;
 
     // 4. Follower Points (5 pts per follower)
-    const followersResult = await query(`SELECT COUNT(*) as count FROM connections WHERE following_id = $1`, [id]);
+    const followersResult = await query(`SELECT COUNT(*) as count FROM user_connections WHERE following_id = $1`, [id]);
     const followersCount = parseInt(followersResult.rows[0]?.count, 10) || 0;
     const followerPoints = followersCount * 5;
 
