@@ -296,10 +296,10 @@ export default function ChatPage() {
             setTimeout(() => { isInternalScrollRef.current = false }, 600)
           }
         }}
-        className={`flex-1 h-full min-w-0 overflow-x-auto md:overflow-hidden overflow-y-hidden snap-x snap-mandatory no-scrollbar transition-all scroll-smooth ${activeChatSession?.id ? 'hidden md:flex' : 'flex'}`}
+        className={`flex-1 h-full min-w-0 overflow-x-auto md:overflow-hidden overflow-y-hidden snap-x snap-mandatory no-scrollbar transition-all scroll-smooth ${activeChatSession?.id ? 'hidden md:hidden' : 'flex'}`}
       >
         {/* Page 0: Discovery Feed (HOME) */}
-        <div data-tab="feed" className="min-w-full h-full snap-start snap-always flex flex-col">
+        <div data-tab="feed" className={`min-w-full h-full snap-start snap-always flex flex-col ${activeTab !== 'feed' ? 'md:hidden' : ''}`}>
           <DiscoveryFeed 
             onStartChat={handleStartDirectChat} 
             filterUserId={feedFilterUserId}
@@ -335,7 +335,7 @@ export default function ChatPage() {
         </div>
 
         {/* Page 2: Groups (Communities) */}
-        <div data-tab="groups" className="min-w-full h-full snap-start snap-always flex flex-col bg-black">
+        <div data-tab="groups" className="min-w-full h-full snap-start snap-always md:hidden flex flex-col bg-black">
           <ChatSidebar
             onSelectChat={handleSelectChat}
             activeChatId={activeChatSession?.id}
@@ -360,18 +360,29 @@ export default function ChatPage() {
         </div>
 
         {/* Page 3: Initiative Updates */}
-        <div data-tab="initiative" className="min-w-full h-full snap-start snap-always flex flex-col">
+        <div data-tab="initiative" className={`min-w-full h-full snap-start snap-always flex flex-col ${activeTab !== 'initiative' ? 'md:hidden' : ''}`}>
           <StatusTab onStatusClick={setActiveStatuses} onBack={() => {}} />
         </div>
 
         {/* Page 4: Jobs Section */}
-        <div data-tab="jobs" className="min-w-full h-full snap-start snap-always flex flex-col">
+        <div data-tab="jobs" className={`min-w-full h-full snap-start snap-always flex flex-col ${activeTab !== 'jobs' ? 'md:hidden' : ''}`}>
           <JobSection />
         </div>
 
         {/* Page 5: Challenges (Arena) */}
-        <div data-tab="challenges" className="min-w-full h-full snap-start snap-always flex flex-col">
+        <div data-tab="challenges" className={`min-w-full h-full snap-start snap-always flex flex-col ${activeTab !== 'challenges' ? 'md:hidden' : ''}`}>
           <ChallengesRoom onSessionChange={setIsArenaActive} />
+        </div>
+
+        {/* Desktop Placeholder for empty chat state */}
+        <div className={`hidden ${(!activeChatSession?.id && (activeTab === 'chat' || activeTab === 'groups')) ? 'md:flex' : 'md:hidden'} min-w-full h-full flex-col items-center justify-center bg-black`}>
+          <div className="w-20 h-20 bg-white/[0.03] rounded-full flex items-center justify-center mb-6 border border-white/[0.05]">
+            <MessageCircle className="w-10 h-10 text-zinc-700" />
+          </div>
+          <h3 className="text-white text-xl font-bold tracking-tight mb-2">Your Messages</h3>
+          <p className="text-zinc-500 text-sm max-w-sm text-center">
+            Select a conversation from the sidebar or start a new one to begin messaging.
+          </p>
         </div>
       </div>
 
