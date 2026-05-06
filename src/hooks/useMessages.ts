@@ -103,7 +103,16 @@ export function useMessages(chatId?: string) {
         !serverData.some(srv => srv.client_id === opt.id || srv.id === opt.id)
       )
 
-      const merged = dedupMessages([...serverData, ...filteredOptimistic])
+      // CRITICAL: We must not let server data downgrade a status that was already upgraded via socket
+      const upgradedServerData = serverData.map(srv => {
+        const existing = prev.find(p => p.id === srv.id || p.client_id === srv.client_id);
+        if (existing && isStatusForward(srv.status, existing.status)) {
+          return { ...srv, status: existing.status };
+        }
+        return srv;
+      });
+
+      const merged = dedupMessages([...upgradedServerData, ...filteredOptimistic])
       // Save real messages to cache (without temp)
       if (chatId) saveToCache(chatId, merged)
       return merged
@@ -227,17 +236,28 @@ export function useMessages(chatId?: string) {
     }
 
     const handleChatRead = (payload: any) => {
-      if (payload.chatId !== chatId) return
+      console.log('[useMessages] handleChatRead received:', payload, 'current chatId:', chatId);
+      if (payload.chatId !== chatId) {
+         console.log('[useMessages] Ignored: chatId mismatch', payload.chatId, chatId);
+         return;
+      }
       const { readerId, status } = payload
       const me = currentUserRef.current
-      if (!me?.id || readerId === me.id) return
+      if (!me?.id || readerId === me.id) {
+         console.log('[useMessages] Ignored: no me or readerId === me.id', me?.id, readerId);
+         return;
+      }
 
       setMessages((prev) => {
-        const updated = prev.map((m) =>
-          m.sender_id === me.id && isStatusForward(m.status, status)
-            ? { ...m, status }
-            : m
-        )
+        let updatedCount = 0;
+        const updated = prev.map((m) => {
+          if (m.sender_id === me.id && isStatusForward(m.status, status)) {
+            updatedCount++;
+            return { ...m, status };
+          }
+          return m;
+        });
+        console.log(`[useMessages] Updated ${updatedCount} messages to ${status}`);
         // Persist updated statuses to cache so ticks survive re-opens
         if (chatId) saveToCache(chatId, updated)
         return updated

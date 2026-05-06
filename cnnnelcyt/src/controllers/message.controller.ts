@@ -100,8 +100,8 @@ export const markDeliveredWebhook = async (req: Request, res: Response): Promise
       const senderId = result.rows[0].sender_id;
       const io = getIO();
       if (io) {
-        // Broadcast the delivery receipt to the sender
-        io.to(`chat:${chatId}`).emit('chat_read', { chatId, readerId: senderId /* we just need any reader id to trigger the tick for the sender */, status: 'delivered' });
+        // Broadcast the delivery receipt to the sender using 'system' as readerId so the frontend doesn't ignore it
+        io.to(`chat:${chatId}`).emit('chat_read', { chatId, readerId: 'system', status: 'delivered' });
       }
     }
 
