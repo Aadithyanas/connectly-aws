@@ -1245,12 +1245,21 @@ export default function InfoSidebar({ isOpen, onClose, type, data, onViewPosts }
                               Install Application
                             </button>
                           ) : (
-                            <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                              <p className="text-[10px] text-zinc-500 leading-tight">
-                                <span className="text-white font-bold block mb-1">How to install:</span>
-                                1. Tap the share icon <span className="inline-block px-1 bg-white/10 rounded">↑</span> below<br/>
-                                2. Select <span className="text-white font-medium">"Add to Home Screen"</span>
-                              </p>
+                            <div className="space-y-3">
+                              <button 
+                                onClick={() => window.open('/', '_blank')}
+                                className="w-full py-2.5 rounded-xl bg-white text-black text-[11px] font-bold tracking-wide hover:scale-[1.02] active:scale-95 transition-all shadow-xl flex items-center justify-center gap-2"
+                              >
+                                <Rocket className="w-3.5 h-3.5" />
+                                Launch Application
+                              </button>
+                              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                                <p className="text-[10px] text-zinc-500 leading-tight">
+                                  <span className="text-white font-bold block mb-1">How to install:</span>
+                                  1. Tap the share icon <span className="inline-block px-1 bg-white/10 rounded">↑</span> below<br/>
+                                  2. Select <span className="text-white font-medium">"Add to Home Screen"</span>
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>

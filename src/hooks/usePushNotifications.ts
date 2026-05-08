@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/utils/api'
 import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
+import { MessageCircle, AlertCircle } from 'lucide-react'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
@@ -73,13 +74,37 @@ export function usePushNotifications() {
       })
 
       setIsSubscribed(true)
-      if (!silent) toast.success('Notifications enabled successfully!')
+      if (!silent) {
+        toast.custom((t) => (
+          <div className="flex items-center gap-4 bg-[#0d0d0f] border border-white/[0.08] p-4 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.8)] min-w-[300px]">
+            <div className="w-10 h-10 rounded-xl bg-[#bc9dff] flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(188,157,255,0.4)]">
+              <MessageCircle className="w-5 h-5 text-black" strokeWidth={2.5} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-white text-[14px] font-black tracking-tight">Connectly System</span>
+              <span className="text-zinc-400 text-[12px] leading-tight mt-0.5">Notifications enabled successfully!</span>
+            </div>
+          </div>
+        ))
+      }
       return true
     } catch (err: any) {
       console.error('[PushNotifications] Error:', err)
       const msg = err.message || 'Failed to subscribe'
       setError(msg)
-      if (!silent) toast.error(msg)
+      if (!silent) {
+        toast.custom((t) => (
+          <div className="flex items-center gap-4 bg-[#0d0d0f] border border-red-500/[0.2] p-4 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.8)] min-w-[300px]">
+            <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0 border border-red-500/20">
+              <AlertCircle className="w-5 h-5 text-red-500" strokeWidth={2.5} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-red-400 text-[14px] font-black tracking-tight">Setup Failed</span>
+              <span className="text-zinc-400 text-[12px] leading-tight mt-0.5">{msg}</span>
+            </div>
+          </div>
+        ))
+      }
       return false
     }
   }, [user])
